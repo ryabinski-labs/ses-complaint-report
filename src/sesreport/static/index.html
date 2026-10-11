@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SES Complaint Report — live</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="mask-icon" href="/favicon.svg" color="#39a0ff">
+<link rel="apple-touch-icon" href="/favicon.svg">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root { --bg:#0f1319; --card:#171d26; --card2:#1d2530; --ink:#e6ebf2; --mut:#8a93a3; --line:#2a3442;
+  --acc:#39a0ff; --red:#e0533d; --ok:#3ecf8e; --warn:#e0a13d;
+  --display:"Fraunces",Georgia,"Times New Roman",serif;
+  --sans:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --ring:0 0 0 3px rgba(57,160,255,.28); }
+* { box-sizing:border-box; }
+body { margin:0; color:var(--ink); font:15px/1.55 var(--sans);
+  background:
+    radial-gradient(1200px 600px at 82% -8%, rgba(57,160,255,.07), transparent 60%),
+    radial-gradient(900px 500px at -6% 6%, rgba(224,161,61,.05), transparent 55%),
+    var(--bg);
+  -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility; }
+.wrap { max-width:1180px; margin:0 auto; padding:26px 22px 90px; }
+h1 { font-family:var(--display); font-weight:600; font-size:34px; margin:0 0 2px; letter-spacing:-.4px; }
+h2 { font-family:var(--sans); font-weight:600; font-size:17px; margin:40px 0 12px; padding-bottom:8px;
+  border-bottom:1px solid var(--line); display:flex; align-items:center; gap:9px; letter-spacing:-.1px; }
+h3 { font-size:14px; margin:22px 0 8px; color:var(--acc); font-weight:600; text-transform:none; letter-spacing:.1px; }
+.ic { width:16px; height:16px; flex:0 0 auto; }
+h2 .ic { color:var(--acc); opacity:.9; }
+.sub { color:var(--mut); font-size:13px; }
+.tag { display:inline-block; padding:2px 9px; border-radius:20px; font-size:11px; font-weight:600; }
+.tag.ok { background:rgba(62,207,142,.15); color:var(--ok); }
+.tag.bad { background:rgba(224,83,61,.15); color:var(--red); }
+.tag.warn { background:rgba(224,161,61,.15); color:var(--warn); }
+.dot { display:inline-block; width:7px; height:7px; border-radius:50%; background:var(--ok); vertical-align:middle; margin-right:6px; box-shadow:0 0 0 0 rgba(62,207,142,.5); animation:pulse 2.4s infinite; }
+@keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(62,207,142,.5);} 70%{box-shadow:0 0 0 7px rgba(62,207,142,0);} 100%{box-shadow:0 0 0 0 rgba(62,207,142,0);} }
+.cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(172px,1fr)); gap:12px; margin:24px 0; }
+.card { position:relative; overflow:hidden; background:var(--card); border:1px solid var(--line); border-radius:13px; padding:15px 16px 16px;
+  transition:transform .18s ease, border-color .18s ease, box-shadow .18s ease; }
+.card::before { content:""; position:absolute; inset:0 0 auto 0; height:2px; background:linear-gradient(90deg,var(--acc),transparent 70%); opacity:.55; }
+.card:hover { transform:translateY(-2px); border-color:#36465b; box-shadow:0 10px 26px -18px rgba(0,0,0,.9); }
+.card .n { font-family:var(--mono); font-weight:500; font-size:25px; letter-spacing:-.6px; font-variant-numeric:tabular-nums; }
+.card .corner { position:absolute; top:12px; right:13px; color:var(--mut); opacity:.45; width:15px; height:15px; }
+.card:hover .corner { opacity:.8; color:var(--acc); }
+.card .n.ok{color:var(--ok)} .card .n.bad{color:var(--red)} .card .n.warn{color:var(--warn)}
+.card .l { color:var(--mut); font-size:12px; margin-top:3px; }
+.card .x { font-size:11px; color:var(--mut); margin-top:7px; }
+table { width:100%; border-collapse:collapse; font-size:13px; margin:6px 0 4px; }
+th,td { text-align:left; padding:7px 9px; border-bottom:1px solid var(--line); vertical-align:top; }
+th { color:var(--mut); font-weight:600; font-size:11px; text-transform:uppercase; letter-spacing:.55px; white-space:nowrap; }
+td:first-child { color:var(--ink); }
+th.sortable { cursor:pointer; user-select:none; }
+th.sortable:hover { color:var(--ink); }
+th .arrow { opacity:.45; font-size:10px; }
+tr:hover td { background:var(--card2); }
+.mono { font-family:var(--mono); font-size:12px; }
+.num,.card .n,td.num { font-variant-numeric:tabular-nums; }
+.muted { color:var(--mut); }
+.ok { color:var(--ok); } .bad { color:var(--red); } .warn { color:var(--warn); }
+.chart { width:100%; display:block; background:var(--card); border:1px solid var(--line); border-radius:12px; margin:8px 0; }
+.box { position:relative; background:var(--card); border:1px solid var(--line); border-radius:13px; padding:16px 18px; margin:14px 0; }
+.box h3 { display:flex; align-items:center; gap:8px; }
+.note { border-left:3px solid var(--warn); }
+.grid2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+@media(max-width:820px){ .grid2{grid-template-columns:1fr;} }
+code { font-family:var(--mono); background:var(--card2); padding:1px 6px; border-radius:5px; font-size:12px; }
+a { color:var(--acc); }
+footer { margin-top:52px; color:var(--mut); font-size:12px; border-top:1px solid var(--line); padding-top:14px; }
+.topbar { display:flex; align-items:flex-start; gap:16px; flex-wrap:wrap; justify-content:space-between; }
+.brand { display:flex; align-items:center; gap:12px; }
+.brand .mark { width:38px; height:38px; flex:0 0 auto; border-radius:10px; border:1px solid var(--line); display:grid; place-items:center; background:var(--card); color:var(--acc); }
+.brand .mark svg { width:20px; height:20px; }
+.controls { display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
+button { display:inline-flex; align-items:center; gap:7px; background:var(--acc); color:#04121f; border:0; border-radius:9px; padding:9px 15px; font-family:var(--sans); font-weight:600; font-size:13px; cursor:pointer; transition:filter .15s ease, transform .08s ease; }
+button:hover { filter:brightness(1.08); }
+button:active { transform:translateY(1px); }
+button:disabled { opacity:.5; cursor:default; }
+button:focus-visible, .search:focus-visible, select:focus-visible { outline:none; box-shadow:var(--ring); }
+button.ghost { background:var(--card2); color:var(--ink); border:1px solid var(--line); }
+button.mini { padding:5px 10px; font-size:12px; font-weight:500; }
+select.search { cursor:pointer; }
+.controls .pill { white-space:nowrap; }
+.seg { display:inline-flex; border:1px solid var(--line); border-radius:9px; overflow:hidden; }
+.seg button { background:var(--card); color:var(--mut); border-radius:0; padding:6px 11px; font-weight:600; }
+.seg button.active { background:var(--card2); color:var(--ink); }
+.pill { display:inline-flex; align-items:center; gap:6px; font-size:11px; color:var(--mut); border:1px solid var(--line); border-radius:20px; padding:4px 10px; }
+.search { background:var(--card2); border:1px solid var(--line); color:var(--ink); border-radius:8px; padding:7px 10px; font-size:13px; width:230px; font-family:var(--sans); transition:border-color .15s ease; }
+.search::placeholder { color:var(--mut); }
+.tablewrap { max-height:430px; overflow:auto; border:1px solid var(--line); border-radius:10px; }
+.tablewrap table { margin:0; }
+.tablewrap thead th { position:sticky; top:0; background:var(--card); z-index:1; }
+.toast { position:fixed; right:20px; bottom:20px; background:var(--card2); border:1px solid var(--line); color:var(--ink); padding:12px 16px; border-radius:11px; font-size:13px; box-shadow:0 12px 40px rgba(0,0,0,.5); opacity:0; transform:translateY(10px); transition:.25s; pointer-events:none; max-width:360px; }
+.toast.show { opacity:1; transform:none; }
+.spinner { width:13px; height:13px; border:2px solid rgba(255,255,255,.35); border-top-color:#fff; border-radius:50%; display:inline-block; animation:spin .7s linear infinite; }
+@keyframes spin { to { transform:rotate(360deg); } }
+.errbox { border-left:3px solid var(--red); }
+.errlist { margin:0; padding-left:18px; }
+.reveal { animation:rise .5s cubic-bezier(.2,.7,.2,1) both; }
+@keyframes rise { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:none; } }
+#app > h2:first-child, #app > .cards { animation-delay:.02s; }
+#app > h2 { animation:rise .5s cubic-bezier(.2,.7,.2,1) both; }
+body::-webkit-scrollbar, .tablewrap::-webkit-scrollbar, .box::-webkit-scrollbar { width:10px; height:10px; }
+body::-webkit-scrollbar-thumb, .tablewrap::-webkit-scrollbar-thumb, .box::-webkit-scrollbar-thumb { background:#2c3847; border-radius:8px; border:2px solid var(--bg); }
+body::-webkit-scrollbar-thumb:hover { background:#3a4a5e; }
+@media (prefers-reduced-motion: reduce) { * { animation:none !important; transition:none !important; } }
+</style></head><body><div class="wrap">
+
+<div class="topbar">
+  <div class="brand">
+    <div class="mark" id="brandmark"></div>
+    <div>
+      <h1>SES Complaint Report</h1>
+      <div class="sub" id="meta"></div>
+    </div>
+  </div>
+  <div class="controls">
+    <span class="pill" id="freshtick"><span class="dot"></span><span id="freshtext">—</span></span>
+    <span class="pill" id="errpill" title="collector warnings" style="display:none"></span>
+    <button class="ghost" onclick="copySummary()" title="Copy a Markdown summary">Copy summary</button>
+    <button class="ghost" onclick="exportJSON()" title="Download the full report as JSON">JSON</button>
+    <button id="refresh" onclick="doRefresh()"><span id="refreshicon"></span> Refresh</button>
+  </div>
+</div>
+
+<div id="app"><div class="box">Loading live data…</div></div>
+
+<footer id="footer"></footer>
+<div class="toast" id="toast"></div>
+
+<script>
+const state = { model:null, range:'all', csSeries:null, source:'all', busy:false, status:null };
+
+const el = (tag, attrs={}, ...kids) => {
+  const n = document.createElement(tag);
+  for (const [k,v] of Object.entries(attrs)) {
+    if (k === 'class') n.className = v;
+    else if (k === 'html') n.innerHTML = v;
+    else if (k.startsWith('on')) n.addEventListener(k.slice(2), v);
+    else if (v !== null && v !== undefined) n.setAttribute(k, v);
+  }
+  for (const k of kids) n.append(k?.nodeType ? k : document.createTextNode(k));
+  return n;
+};
+const fmtInt = n => (n===null||n===undefined) ? '—' : Number(n).toLocaleString('en-US');
+const fmtPct = (x, d=4) => (x===null||x===undefined) ? '—' : (x*100).toFixed(d) + '%';
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function fmtTs(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (isNaN(d)) return iso;
+  return d.toLocaleString('en-US', {year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+}
+function toast(msg, ms=3200) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.classList.add('show');
+  clearTimeout(t._h); t._h = setTimeout(()=>t.classList.remove('show'), ms);
+}
+
+/* ------------------------------------------------------------------- icons */
+const ICONS = {
+  shield: '<path d="M12 3l7 3v5c0 4.4-3 7.4-7 9-4-1.6-7-4.6-7-9V6z"/><path d="M9.5 12l1.8 1.8L15 9.8"/>',
+  activity: '<path d="M3 12h4l2.5-6 3 12 2.5-6h6"/>',
+  layers: '<path d="M12 3l8 4.5-8 4.5-8-4.5z"/><path d="M4 12l8 4.5 8-4.5"/><path d="M4 16.5L12 21l8-4.5"/>',
+  users: '<circle cx="9" cy="8" r="3"/><path d="M3.5 20a5.5 5.5 0 0 1 11 0"/><path d="M16 6.2a3 3 0 0 1 0 5.6"/><path d="M17.5 20a5.5 5.5 0 0 0-2.3-4.5"/>',
+  database: '<ellipse cx="12" cy="6" rx="7" ry="3"/><path d="M5 6v6c0 1.7 3.1 3 7 3s7-1.3 7-3V6"/><path d="M5 12v6c0 1.7 3.1 3 7 3s7-1.3 7-3v-6"/>',
+  route: '<circle cx="6" cy="18" r="2.2"/><circle cx="18" cy="6" r="2.2"/><path d="M8 17.5h5a3 3 0 0 0 3-3V8.4"/>',
+  server: '<rect x="3.5" y="4" width="17" height="6" rx="2"/><rect x="3.5" y="14" width="17" height="6" rx="2"/><path d="M7 7h.01M7 17h.01"/>',
+  clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
+  alert: '<path d="M12 4l8.5 15H3.5z"/><path d="M12 10v4M12 17h.01"/>',
+  refresh: '<path d="M20 11a8 8 0 1 0-.6 3"/><path d="M20 5v6h-6"/>',
+  check: '<circle cx="12" cy="12" r="8.5"/><path d="M8.5 12.2l2.4 2.4 4.6-4.9"/>',
+  flame: '<path d="M12 3c3 4 5 6 5 9a5 5 0 0 1-10 0c0-1.6.8-2.9 1.8-4 .3 1.2 1 2 2 2.2C10 8 10.5 5.5 12 3z"/>',
+};
+function icon(name, cls='') {
+  return `<svg class="ic ${cls}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name]||''}</svg>`;
+}
+function h2(iconName, text) { return `<h2>${icon(iconName)}<span>${text}</span></h2>`; }
+
+/* ------------------------------------------------------------ change / diff */
+function prevSnapshot() {
+  const h = state.history || [];
+  return h.length >= 2 ? h[h.length - 2] : null;
+}
+function curSnapshot() {
+  const h = state.history || [];
+  return h.length ? h[h.length - 1] : null;
+}
+function dnum(cur, prev) {
+  if (cur == null || prev == null) return '';
+  const x = cur - prev;
+  if (x === 0) return ' <span class="muted" title="unchanged">±0</span>';
+  const cls = x > 0 ? 'bad' : 'ok';
+  return ` <span class="${cls}" title="since last refresh">${x > 0 ? '+' : ''}${x}</span>`;
+}
+function dpp(cur, prev) {
+  if (cur == null || prev == null) return '';
+  const x = (cur - prev) * 100;
+  if (Math.abs(x) < 0.00005) return ' <span class="muted">±0</span>';
+  const cls = x > 0 ? 'bad' : 'ok';
+  return ` <span class="${cls}" title="since last refresh">${x > 0 ? '+' : ''}${x.toFixed(4)} pp</span>`;
+}
+function sparkline(values, {w=180, h=34, color='#39a0ff'}={}) {
+  const vals = values.filter(v => v != null);
+  if (vals.length < 2) return '<span class="muted">not enough history yet</span>';
+  const min = Math.min(...vals), max = Math.max(...vals), span = (max - min) || 1;
+  const pts = vals.map((v,i)=>{ const x=(i/(vals.length-1))*(w-4)+2; const y=h-4-((v-min)/span)*(h-8); return `${x.toFixed(1)},${y.toFixed(1)}`;}).join(' ');
+  return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" style="vertical-align:middle">
+    <polyline points="${pts}" fill="none" stroke="${color}" stroke-width="1.6"/></svg>`;
+}
+
+/* ------------------------------------------------------------------ export */
+function copyText(text, label='Copied to clipboard') {
+  navigator.clipboard?.writeText(text).then(()=>toast(label), ()=>toast('Copy failed — select manually'));
+}
+function download(name, text, mime='application/json') {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], {type:mime}));
+  a.download = name; a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 4000);
+}
+function exportJSON() {
+  const stamp = (state.model?.meta?.generated_at || '').replace(/[:.]/g,'-').slice(0,19);
+  download(`ses-complaint-report-${stamp}.json`, JSON.stringify(state.model, null, 2));
+}
+function toCsv(rows, columns) {
+  const esc2 = v => { const s = String(v ?? ''); return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s; };
+  const head = columns.map(c=>esc2(c.title)).join(',');
+  const body = rows.map(r=>columns.map(c=>esc2(r[c.key])).join(',')).join('\n');
+  return head + '\n' + body;
+}
+function buildMarkdown() {
+  const m = state.model, met = m.metrics, p = m.posture, sl = m.suppression_list || {};
+  const gaps = (m.suppression_coverage||[]).filter(c=>!c.routes_feedback);
+  const L = [];
+  L.push(`# SES Complaint Report — account ${m.meta.account}`);
+  L.push('');
+  L.push(`Generated ${fmtTs(m.meta.generated_at)} · region ${m.meta.region}`);
+  L.push('');
+  L.push('## Summary');
+  L.push(`- Recorded complaints: **${met.total_complaints}** (${met.window.start} → ${met.window.end})`);
+  L.push(`- Overall complaint rate: **${fmtPct(met.overall_complaint_rate)}** of ${fmtInt(met.total_sends)} sends (${met.window.days}-day volume)`);
+  L.push(`- Peak rolling rate: **${met.peak_rate?fmtPct(met.peak_rate.rate)+' ('+met.peak_rate.date+')':'—'}** vs AWS review line 0.10%`);
+  L.push(`- Enforcement status: **${p.enforcement_status}**`);
+  L.push(`- Complaints on SES suppression list: **${sl.complaints ?? '—'}** of ${sl.total ?? '—'} entries (no expiry)`);
+  L.push('');
+  L.push('## Suppression gaps (config sets with no BOUNCE/COMPLAINT routing)');
+  if (gaps.length) for (const g of gaps) L.push(`- \`${g.config_set}\` — risk ${g.risk}${g.complaints?`, ${g.complaints} complaints`:''}`);
+  else L.push('- none');
+  L.push('');
+  L.push('## Per-config-set complaints');
+  for (const c of (m.config_set_complaints||[])) L.push(`- \`${c.config_set}\`: ${c.events}`);
+  L.push('');
+  L.push(`_Read-only audit · generated by ses-complaint-report_`);
+  return L.join('\n');
+}
+function copySummary() { copyText(buildMarkdown(), 'Summary copied as Markdown'); }
+
+function fixCommand(cs) {
+  const dest = JSON.stringify({
+    Enabled: true,
+    Name: "feedback-to-cloudwatch",
+    MatchingEventTypes: ["BOUNCE", "COMPLAINT"],
+    CloudWatchDestination: {
+      DimensionConfigurations: [
+        { DimensionName: "ses:configuration-set", DimensionValueSource: "messageTag", DefaultDimensionValue: cs },
+      ],
+    },
+  }, null, 0);
+  return `aws sesv2 create-configuration-set-event-destination \\
+  --configuration-set-name ${cs} \\
+  --event-destination '${dest}'`;
+}
+function copyFix(cs) { copyText(fixCommand(cs), `Fix command for ${cs} copied`); }
+
+/* ------------------------------------------------------------------ charts */
+function barChart(data, {height=180, color='#e0533d'}={}) {
+  const W = 1060, H = height, pad = 24, bw = Math.max(2, (W-pad*2)/Math.max(data.length,1) - 3);
+  const max = Math.max(1, ...data.map(d=>d.count));
+  const plot = H - 30;
+  let bars = '';
+  data.forEach((d,i) => {
+    const x = pad + i*((W-pad*2)/Math.max(data.length,1));
+    const h = (d.count/max)*plot;
+    const y = plot - h + 6;
+    bars += `<rect x="${x.toFixed(1)}" y="${y.toFixed(1)}" width="${bw.toFixed(1)}" height="${Math.max(1,h).toFixed(1)}" fill="${color}" rx="1"><title>${d.date}: ${d.count}</title></rect>`;
+  });
+  return `<svg viewBox="0 0 ${W} ${H}" class="chart" preserveAspectRatio="none" style="height:${H}px">
+    <line x1="${pad}" y1="${plot+6}" x2="${W-pad}" y2="${plot+6}" stroke="#3a4150"/>
+    <text x="${pad}" y="14" font-size="10" fill="#8a93a3">max ${max}/day</text>${bars}</svg>`;
+}
+function lineChart(series, {height=210, color='#39a0ff', line=0.001, lineLabel='AWS review line 0.10%', alert=0.0009}={}) {
+  const W=1060,H=height,pad=10,bottom=26,top=14;
+  const maxY = Math.max(line*1.1, ...series.map(p=>p.rate||0)) * 1.02;
+  const y = v => top + (1 - v/maxY)*(H-top-bottom);
+  const x = i => pad + (i/Math.max(series.length-1,1))*(W-pad*2);
+  let path = '';
+  series.forEach((p,i)=>{ path += `${i?'L':'M'} ${x(i).toFixed(1)} ${y(p.rate).toFixed(1)} `; });
+  const yRev = y(line), yAlt = y(alert);
+  return `<svg viewBox="0 0 ${W} ${H}" class="chart" preserveAspectRatio="none" style="height:${H}px">
+    <line x1="${pad}" y1="${yRev}" x2="${W-pad}" y2="${yRev}" stroke="#e0533d" stroke-dasharray="5,4"/>
+    <text x="${W-pad}" y="${yRev-4}" font-size="10" fill="#e0533d" text-anchor="end">${lineLabel}</text>
+    <line x1="${pad}" y1="${yAlt}" x2="${W-pad}" y2="${yAlt}" stroke="#e0a13d" stroke-dasharray="3,4"/>
+    <text x="${W-pad}" y="${yAlt-4}" font-size="10" fill="#e0a13d" text-anchor="end">internal alert 0.09%</text>
+    <path d="${path}" fill="none" stroke="${color}" stroke-width="1.6"/>
+  </svg>`;
+}
+
+/* ------------------------------------------------------------------ tables */
+function makeTable({columns, rows, search=true, height=null, filters=[], csv=null}) {
+  const root = el('div');
+  let q = '', sortKey = null, sortDir = 1, lastData = rows;
+  const fstate = {};
+  const bar = el('div', {class:'controls', style:'margin:8px 0'});
+  if (search) {
+    const inp = el('input', {class:'search', placeholder:'Search…', oninput:e=>{q=e.target.value.toLowerCase(); draw();}});
+    bar.append(inp);
+  }
+  for (const f of filters) {
+    const sel = el('select', {class:'search', style:'width:auto', onchange:e=>{fstate[f.key]=e.target.value; draw();}});
+    sel.append(el('option',{value:''}, f.label));
+    const vals = [...new Set(rows.map(r=>f.value(r)).filter(v=>v!==undefined&&v!==null&&v!==''))].sort();
+    for (const v of vals) sel.append(el('option',{value:v}, v));
+    bar.append(sel);
+  }
+  const csvBtn = el('button', {class:'ghost mini', type:'button', onclick:()=>{
+    const name = (csv || columns[0].title).toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
+    download(`ses-${name}.csv`, toCsv(lastData, columns.filter(c=>c.key!=='fix')), 'text/csv');
+  }}, '⤓ CSV');
+  bar.append(csvBtn);
+  const wrap = el('div', {class:'tablewrap', style: height?`max-height:${height}px`:''});
+  const tbl = el('table');
+  const thead = el('thead'), trh = el('tr');
+  for (const c of columns) {
+    const th = el('th', {class:'sortable'});
+    th.innerHTML = esc(c.title) + ' <span class="arrow"></span>';
+    th.addEventListener('click', ()=>{ if(sortKey===c.key) sortDir*=-1; else {sortKey=c.key; sortDir=1;} draw(); });
+    c._th = th; trh.append(th);
+  }
+  thead.append(trh); tbl.append(thead);
+  const tbody = el('tbody'); tbl.append(tbody);
+  wrap.append(tbl); root.append(bar, wrap);
+  const count = el('div',{class:'sub',style:'margin-top:6px'});
+
+  function draw() {
+    let data = rows.slice();
+    if (q) data = data.filter(r => columns.some(c => String(c.render ? c.render(r) : r[c.key] ?? '').toLowerCase().includes(q)));
+    for (const f of filters) if (fstate[f.key] !== '' && fstate[f.key] !== undefined) data = data.filter(r => String(f.value(r)) === fstate[f.key]);
+    if (sortKey) {
+      const c = columns.find(c=>c.key===sortKey);
+      data.sort((a,b)=>{ let x=a[sortKey], y=b[sortKey];
+        if (c && c.type==='num') { x=Number(x)||0; y=Number(y)||0; return (x-y)*sortDir; }
+        return String(x??'').localeCompare(String(y??''))*sortDir; });
+    }
+    tbody.innerHTML = '';
+    for (const r of data) {
+      const tr = el('tr');
+      for (const c of columns) {
+        const td = el('td', {class:c.cls||''});
+        const v = c.render ? c.render(r) : (r[c.key] ?? '');
+        if (v && v.nodeType) td.append(v); else td.innerHTML = v===null||v===undefined?'':String(v);
+        tr.append(td);
+      }
+      tbody.append(tr);
+    }
+    columns.forEach(c=>{ const a=c._th.querySelector('.arrow'); a.textContent = sortKey===c.key ? (sortDir>0?'▲':'▼') : ''; });
+    lastData = data;
+    count.textContent = `${data.length} row${data.length===1?'':'s'}${data.length!==rows.length?` (of ${rows.length})`:''}`;
+  }
+  root.append(count);
+  draw();
+  return root;
+}
+
+/* ------------------------------------------------------------------ sections */
+function tag(text, kind){ return `<span class="tag ${kind}">${esc(text)}</span>`; }
+
+function renderMeta() {
+  const m = state.model, meta = m.meta;
+  document.getElementById('meta').innerHTML =
+    `AWS account <span class="mono">${meta.account}</span> · region <span class="mono">${meta.region}</span> · generated ${fmtTs(meta.generated_at)} · collector ${meta.collector_version}`;
+  const errs = (m.errors||[]).length;
+  const pill = document.getElementById('errpill');
+  if (errs) { pill.style.display=''; pill.className='pill warn'; pill.textContent = `${errs} collector warning${errs===1?'':'s'}`; }
+  else pill.style.display='none';
+  document.getElementById('footer').innerHTML =
+    `Generated ${fmtTs(meta.generated_at)} · account ${meta.account} · profile <code>${meta.profile}</code> · collected in ${m.collect_ms} ms · <span class="muted">refresh this page or click Refresh to re-query AWS</span>`;
+}
+
+function card(n, l, x, cls='', iconName='') {
+  return `<div class="card">${iconName?`<span class="corner">${icon(iconName)}</span>`:''}<div class="n ${cls}">${n}</div><div class="l">${l}</div><div class="x">${x}</div></div>`;
+}
+
+function renderCards() {
+  const m = state.model, met = m.metrics, p = m.posture;
+  const peak = met.peak_rate ? fmtPct(met.peak_rate.rate) : '—';
+  const enfr = p.enforcement_status || 'UNKNOWN';
+  const enfcls = enfr === 'HEALTHY' ? 'ok' : 'bad';
+  const bad = (enfr !== 'HEALTHY');
+  const prev = prevSnapshot();
+  return `<div class="cards">
+    ${card(fmtInt(met.total_complaints), 'Total SES complaints (recorded)', `${met.window.start} → ${met.window.end}${prev?dnum(met.total_complaints, prev.total_complaints):''}`, '', 'flame')}
+    ${card(fmtPct(met.overall_complaint_rate), 'Overall complaint rate', `${fmtInt(met.total_complaints)} of ${fmtInt(met.total_sends)} sends`, '', 'activity')}
+    ${card(peak, 'Peak rolling complaint rate', met.peak_rate ? `on ${met.peak_rate.date} (AWS review line 0.10%)${prev?dpp(met.latest_rate&&met.latest_rate.rate, prev.latest_rate):''}` : '' , (met.peak_rate && met.peak_rate.rate>=0.0009)?'warn':'', 'alert')}
+    ${card(enfr, 'AWS enforcement status', 'account reputation', bad?'bad':'ok', 'shield')}
+    ${card(fmtInt(m.complainants.length), 'Complaint-flagged accounts', 'users who pressed "spam"', '', 'users')}
+    ${card(m.suppression_list?fmtInt(m.suppression_list.complaints):'—', 'Complaints on SES suppression list', m.suppression_list?`${fmtInt(m.suppression_list.total)} total suppressed · no expiry${prev&&prev.suppression_complaints!=null?dnum(m.suppression_list.complaints, prev.suppression_complaints):''}`:'not collected', 'warn', 'database')}
+    ${card(`${m.config_sets.filter(c=>c.forwards_feedback).length} / ${m.config_sets.length}`, 'Config sets routing feedback', 'config sets routing COMPLAINT events', '', 'route')}
+  </div>`;
+}
+
+function renderDelta() {
+  const prev = prevSnapshot(), cur = curSnapshot();
+  if (!prev) {
+    const n = (state.history||[]).length;
+    return `<div class="box muted">${icon('clock')} Change tracking begins after the next refresh — ${n} snapshot${n===1?'':'s'} recorded so far.</div>`;
+  }
+  const newC = (cur.complainants||[]).filter(e => !(prev.complainants||[]).includes(e));
+  const newDays = (cur.complaint_days||[]).filter(x => !(prev.complaint_days||[]).includes(x));
+  const rateSpark = sparkline((state.history||[]).map(x=>x.latest_rate));
+  return `<div class="box"><h3 style="margin-top:0">${icon('activity')} Change since last refresh</h3>
+    <table>
+      <tr><td>Recorded complaints</td><td class="num">${cur.total_complaints ?? '—'}${dnum(cur.total_complaints, prev.total_complaints)}</td></tr>
+      <tr><td>Rolling complaint rate</td><td class="num">${fmtPct(cur.latest_rate)}${dpp(cur.latest_rate, prev.latest_rate)}</td></tr>
+      <tr><td>Suppression-list complaints</td><td class="num">${cur.suppression_complaints ?? '—'}${dnum(cur.suppression_complaints, prev.suppression_complaints)}</td></tr>
+      <tr><td>New complainant addresses</td><td>${newC.length ? newC.map(e=>`<span class="mono">${esc(e)}</span>`).join(', ') : '<span class="ok">none</span>'}</td></tr>
+      <tr><td>New complaint days</td><td>${newDays.length ? newDays.join(', ') : '<span class="ok">none</span>'}</td></tr>
+    </table>
+    <div class="sub" style="margin-top:10px">Rolling rate across ${state.history.length} refreshes ${rateSpark}</div>
+    <div class="sub">Compared ${fmtTs(prev.generated_at)} → ${fmtTs(cur.generated_at)}.</div>
+  </div>`;
+}
+
+function renderHeadline() {
+  const m = state.model, met = m.metrics;
+  const per = met.total_complaints ? Math.round(met.total_sends / met.total_complaints) : null;
+  const enfr = m.posture.enforcement_status === 'HEALTHY';
+  return `<div class="box"><h3 style="margin-top:0">Headline</h3>
+    <p>The shared SES account has recorded <b>${met.total_complaints} complaint events</b> since CloudWatch began publishing the
+    <code>Complaint</code> metric (${met.window.start} → ${met.window.end}). That is <b>${fmtPct(met.overall_complaint_rate)}</b> of
+    ${fmtInt(met.total_sends)} sends over the last ${met.window.days} days —
+    ${per?`roughly <b>1 complaint per ${fmtInt(per)} messages</b>, `:''}an order of magnitude below AWS's 0.10% reputation-review line.
+    AWS enforcement status is ${enfr?tag('HEALTHY','ok'):tag(m.posture.enforcement_status,'bad')}.
+    The account suppresses ${(m.posture.suppressed_reasons||[]).map(r=>`<code>${r}</code>`).join(' and ')} recipients at the SES level.</p>
+    <p>Peak rolling complaint rate ${met.peak_rate?`<b>${fmtPct(met.peak_rate.rate)}</b> on ${met.peak_rate.date}`:'—'}, versus an internal Nightlamp alert line of 0.08–0.09% and AWS's 0.10% review threshold.</p>
+  </div>`;
+}
+
+function renderPosture() {
+  const p = state.model.posture, q = p.send_quota||{}, sl = state.model.suppression_list;
+  const enfcls = p.enforcement_status==='HEALTHY'?'ok':'bad';
+  const rows = [
+    ['Enforcement status', `<span class="${enfcls}">${esc(p.enforcement_status)}</span>`],
+    ['Production access', p.production_access?'enabled':'disabled'],
+    ['Sending enabled', String(p.sending_enabled)],
+    ['SES account suppression list', (p.suppressed_reasons||[]).join(', ')||'none'],
+    ['Suppression list entries (live)', sl?`${fmtInt(sl.total)} total · ${fmtInt(sl.complaints)} complaint · no expiry${sl.oldest?` · oldest ${esc(sl.oldest.slice(0,10))}`:''}`:'not collected'],
+    ['VDM (Virtual Deliverability Manager)', p.vdm],
+    ['Send quota', `${fmtInt(q.sent_24h)} / ${fmtInt(q.max_24h)} per 24h · ${q.rate} msg/s`],
+    ['Dedicated IP auto-warmup', String(p.dedicated_ip_auto_warmup)],
+    ['Pricing plan', p.pricing_plan||'NONE'],
+  ];
+  return `${h2('shield','1 · Enforcement &amp; suppression posture')}
+    <table>${rows.map(r=>`<tr><td>${r[0]}</td><td>${r[1]}</td></tr>`).join('')}</table>
+    <p class="sub">Live from <code>sesv2:GetAccount</code> at ${fmtTs(state.model.meta.generated_at)}.</p>`;
+}
+
+function rangeDays() { return state.range==='all' ? Infinity : Number(state.range); }
+
+function renderVolume() {
+  const met = state.model.metrics;
+  const cut = rangeDays();
+  const since = d => cut===Infinity || (Date.now() - new Date(d).getTime())/86400000 <= cut;
+  const complaints = met.complaints_by_day.filter(d=>since(d.date));
+  const rate = met.rate_series.filter(d=>since(d.date));
+
+  const seg = ['30','90','180','365','all'].map(v =>
+    `<button class="${state.range===v?'active':''}" onclick="setRange('${v}')">${v==='all'?'All':v+'d'}</button>`).join('');
+
+  const cs = state.model.config_set_complaints;
+  const csSeg = cs.length ? `<div class="controls" style="margin:10px 0 0"><span class="sub">Per config set:</span>
+    <div class="seg"><button class="${state.source==='all'?'active':''}" onclick="setSource('all')">all</button>
+    ${cs.map(c=>`<button class="${state.source===c.config_set?'active':''}" onclick="setSource('${esc(c.config_set)}')">${esc(c.config_set)}</button>`).join('')}</div></div>` : '';
+
+  let srcComplaints = complaints, srcRate = rate;
+  const rd = (met.window && met.window.days) || 455;
+  const addExpiry = d => ({...d, expires: d.expires || new Date(new Date(d.date).getTime()+rd*86400000).toISOString().slice(0,10)});
+  if (state.source!=='all') {
+    const c = cs.find(c=>c.config_set===state.source);
+    srcComplaints = (c?c.days:[]).filter(d=>since(d.date)).map(addExpiry);
+    const base = (c?c.events:0);
+    const tot = met.total_complaints||1;
+    srcRate = rate.map(p=>({date:p.date, rate: p.rate*(base/tot)}));
+  } else {
+    srcComplaints = complaints.map(addExpiry);
+  }
+
+  return `${h2('activity','2 · Complaint volume')}
+    <div class="controls"><div class="seg">${seg}</div>${csSeg}</div>
+    <h3>Complaints per day ${state.source!=='all'?`— <span class="mono">${esc(state.source)}</span>`:'(account-wide)'} · CloudWatch <code>AWS/SES · Complaint</code></h3>
+    ${barChart(srcComplaints)}
+    <div class="grid2"><div>${makeTable({columns:[{key:'date',title:'Date'},{key:'count',title:'Complaints',type:'num'},{key:'expires',title:'Ages out of CloudWatch'}], rows:srcComplaints.slice().reverse(), search:false, height:300})}</div>
+    <div class="sub" style="align-self:center">Same window: ${fmtInt(met.total_sends)} sends, ${fmtInt(met.total_bounces)} bounces.<br>The <code>Complaint</code> count metric is only published on days a complaint occurred.<br><br><b>${srcComplaints.reduce((a,b)=>a+b.count,0)}</b> complaints in view.</div></div>
+    <h3>Rolling complaint rate vs AWS review line</h3>
+    ${lineChart(srcRate)}
+    <p class="sub">Latest ${met.latest_rate?fmtPct(met.latest_rate.rate)+' ('+met.latest_rate.date+')':'—'} · peak ${met.peak_rate?fmtPct(met.peak_rate.rate)+' on '+met.peak_rate.date:'—'}.</p>`;
+}
+
+function renderByConfigSet() {
+  const cs = state.model.config_set_complaints;
+  const rows = cs.length ? cs : [{config_set:'(none published)', events:0, days:[]}];
+  return `${h2('layers','3 · Complaints by configuration set (CloudWatch)')}
+    <table><tr><th>Configuration set</th><th>Recorded complaint events</th><th>Days</th></tr>
+    ${rows.map(r=>`<tr><td>${esc(r.config_set)}</td><td>${fmtInt(r.events)}</td><td class="muted">${(r.days||[]).map(d=>d.date).join(', ')||'—'}</td></tr>`).join('')}
+    <tr><td><b>Account total</b></td><td><b>${fmtInt(state.model.metrics.total_complaints)}</b></td><td></td></tr></table>
+    <p class="sub">Per-config-set <code>Complaint</code> metrics are published only for config sets that route events to CloudWatch.</p>`;
+}
+
+function renderComplainants() {
+  return `${h2('users','4 · Individual complaint records')}
+    <h3>4.1 · Recipients flagged as complainants (application accounts)</h3>
+    <p class="sub">Every complaint whose recipient matched an application account row. The diagnostic string is the ARF feedback provider reported by the mailbox provider.</p>
+    <div id="complainantTable"></div>`;
+}
+
+function renderUnattributed() {
+  const rows = state.model.unattributed;
+  return `<h3>4.2 · Unattributed complaint domains (CloudWatch Logs, last 7 days)</h3>
+    <p class="sub">Complaints for addresses with no matching account row. The pipeline logs recipient domain and feedback type only.</p>
+    ${rows.length ? makeTable({columns:[{key:'domain',title:'Recipient domain',cls:'mono'},{key:'feedback_type',title:'Feedback type'},{key:'events',title:'Events',type:'num'}], rows, search:false})
+      : '<div class="box muted">No unattributed feedback events in the last 7 days (log retention is 7 days).</div>'}`;
+}
+
+function renderStores() {
+  const rows = state.model.stores;
+  return `<h3>4.3 · Where complaint records live</h3>
+    <table><tr><th>Store</th><th>Complaints</th><th>Notes</th></tr>
+    ${rows.map(r=>`<tr><td>${esc(r.store)}</td><td>${r.complaints===null||r.complaints===undefined?'—':fmtInt(r.complaints)}</td><td class="muted">${esc(r.detail||'')}</td></tr>`).join('')}</table>`;
+}
+
+function renderPipeline() {
+  const cs = state.model.config_sets;
+  const q = state.model.complaint_queue;
+  const fwd = cs.filter(c=>c.forwards_feedback);
+  const cov = state.model.suppression_coverage || [];
+  const gaps = cov.filter(c=>!c.routes_feedback);
+  return `${h2('route','5 · Complaint handling pipeline &amp; suppression coverage')}
+    <div class="box"><table>
+      <tr><td>Config sets routing feedback</td><td>${fmtInt(fwd.length)} of ${fmtInt(cs.length)} forward <code>BOUNCE</code>/<code>COMPLAINT</code> to SNS or CloudWatch; <b class="warn">${fmtInt(gaps.length)}</b> do not.</td></tr>
+      <tr><td>Account-level suppression</td><td>${(state.model.posture.suppressed_reasons||[]).length?'SES auto-suppresses <code>'+(state.model.posture.suppressed_reasons||[]).join('</code>/<code>')+'</code> for <em>every</em> config set — the gap below is visibility and app handling, not whether the recipient is suppressed.':'not enabled — recipients are NOT auto-suppressed on complaint.'}</td></tr>
+      <tr><td>VDM (Virtual Deliverability Manager)</td><td>${esc(state.model.posture.vdm)}${state.model.posture.vdm==='DISABLED'?' — enabling it gives per-ISP, per-identity complaint visibility across all config sets, regardless of routing.':' — per-ISP/per-identity complaint visibility is available.'}</td></tr>
+      <tr><td>Application feedback handler</td><td>Your own handler consumes <code>BOUNCE</code>/<code>COMPLAINT</code> from the feedback topic, records complaints against matching accounts, and logs the rest as unattributed.</td></tr>
+      <tr><td>Application policy</td><td>Matching complaints are recorded against the account; the application layer applies its own reputation/lock policy on top of AWS enforcement.</td></tr>
+      <tr><td>Complaint DLQ</td><td>${q?`<code>${esc(q.name)}</code>: visible ${q.visible} · in-flight ${q.in_flight} · retention ${q.retention_s}s${q.kms?' · KMS':''} (bodies not read by this report).`:'—'}</td></tr>
+    </table></div>
+    <h3>Suppression coverage by configuration set</h3>
+    <p class="sub">Send paths with no <code>COMPLAINT</code>/<code>BOUNCE</code> event destination never notify an application handler, so complaints there are invisible to ops and unhandled in app data (the SES account list still suppresses them). Ranked by exposure.</p>
+    <div id="covTable"></div>
+    <h3>Configuration sets and their feedback routing</h3>
+    <div id="csTable"></div>
+    <h3>SNS feedback / ops topics and subscribers</h3>
+    <div id="snsTable"></div>`;
+}
+
+function renderInfra() {
+  const id = state.model.identities;
+  const other = (id.other_regions||[]).map(r=>`${r.region}: ${r.count} identit${r.count===1?'y':'ies'}${r.names.length?' ('+r.names.join(', ')+')':''}`).join(' · ');
+  return `${h2('server','6 · Infrastructure map')}
+    <div class="grid2">
+      <div><h3>Sending identities (${(id.rows||[]).length} in ${state.model.meta.region})</h3>
+        <p class="sub">${id.verified} verified &amp; sending · ${id.failed} failed · ${id.pending} pending.${other?` Other regions: ${esc(other)}.`:''}</p>
+        <div id="idTable"></div></div>
+      <div><h3>Summary</h3>
+        <table>
+          <tr><td>Identities</td><td>${(id.rows||[]).length}</td></tr>
+          <tr><td>Verified for sending</td><td>${id.verified}</td></tr>
+          <tr><td>Configuration sets</td><td>${state.model.config_sets.length}</td></tr>
+          <tr><td>SNS topics</td><td>${state.model.sns_topics.length}</td></tr>
+          <tr><td>Complaint queue (visible)</td><td>${state.model.complaint_queue?state.model.complaint_queue.visible:'—'}</td></tr>
+        </table>
+        <h3>Complaint-flagged trend</h3>${barChart(state.model.metrics.complaints_by_day,{height:150})}
+      </div>
+    </div>`;
+}
+
+function renderExpiry() {
+  const m = state.model, met = m.metrics, ret = m.retention || {}, sl = m.suppression_list;
+  const first = met.complaints_by_day[0], last = met.complaints_by_day[met.complaints_by_day.length-1];
+  return `<div class="box note"><h3 style="margin-top:0">When do complaints expire?</h3>
+    <p class="sub">Three different answers, depending on which record you mean.</p>
+    <table>
+      <tr><th>Record</th><th>Lifetime</th><th>Effect</th></tr>
+      <tr><td>CloudWatch <code>Complaint</code> count</td><td>${ret.cloudwatch_days||455} days (15 months), hourly rollup</td>
+        <td>The oldest recorded complaint (${first?first.date:'—'}) ages out on <b>${ret.oldest_expires||'—'}</b>; the newest (${last?last.date:'—'}) on <b>${ret.newest_expires||'—'}</b>. After that the count point is gone from the metric.</td></tr>
+      <tr><td>SES account-level suppression list</td><td>Never — until you remove it</td>
+        <td>A complainant address stays suppressed indefinitely ${sl?`(currently <b>${fmtInt(sl.complaints)}</b> complaint-suppressed of ${fmtInt(sl.total)} total${sl.oldest_complaint?`, oldest complaint entry ${sl.oldest_complaint.slice(0,10)}`:''}).`:'.'} Only exception: SES deletes suppression entries after 90 days <em>only if your account's sending is paused</em> (kept if sending resumes sooner).</td></tr>
+      <tr><td>Reputation complaint rate</td><td>No fixed window</td>
+        <td>AWS scores against a "representative volume" that follows your sending patterns, so old complaints fade by dilution rather than expiring on a date.</td></tr>
+    </table></div>`;
+}
+
+function renderMethodology() {
+  const met = state.model.metrics;
+  const ret = state.model.retention || {};
+  const q = state.model.complaint_queue;
+  const errs = state.model.errors||[];
+  const errBox = errs.length ? `<div class="box errbox"><b>Collector warnings (${errs.length}).</b> These sources failed this cycle; the rest of the report still rendered.
+    <ul class="errlist">${errs.map(e=>`<li><code>${esc(e.section)}</code> — ${esc(e.error)}</li>`).join('')}</ul></div>` : '';
+  return `${h2('clock','7 · Retention, methodology &amp; caveats')}${errBox}${renderExpiry()}
+    <div class="box"><table>
+      <tr><th>Source</th><th>What it provides</th><th>Coverage</th></tr>
+      <tr><td>CloudWatch <code>AWS/SES</code> (${state.model.meta.region})</td><td>Complaint/Send/Bounce counts, per-config-set counts, <code>Reputation.ComplaintRate</code></td><td>${met.window.days} days (${met.window.retention_start} → ${met.window.retention_end})</td></tr>
+      <tr><td>SES v2 API</td><td>Enforcement, suppression list, quota, identities, config sets, event destinations</td><td>point-in-time</td></tr>
+      <tr><td>SNS + SQS</td><td>Feedback topic topology, subscribers, DLQ state</td><td>point-in-time</td></tr>
+      <tr><td>DynamoDB application stores</td><td>Individual complainant addresses and diagnostics</td><td>as retained by each app</td></tr>
+      <tr><td>CloudWatch Logs Insights</td><td>structured <code>event=feedback_unattributed</code> events</td><td>7-day retention only</td></tr>
+    </table></div>
+    <div class="box note"><b>Caveats.</b> (1) CloudWatch's <code>Complaint</code> count metric is retained for only ${ret.cloudwatch_days||455} days, so totals reflect activity recorded in that window — earlier activity is only inferable from the rolling rate.
+    (2) Per-recipient detail exists only where an application persisted it. (3) CloudWatch Logs retains 7 days, so historical unattributed complaints are not fully recoverable.
+    (4) The <code>${esc(q?q.name:'complaint')}</code> SQS dead-letter store is governance-controlled; its message bodies are deliberately not read.
+    (5) Expiry semantics sourced from AWS SES and CloudWatch docs (suppression-list entries do not auto-expire; CloudWatch keeps 1-hour data points 455 days).
+    (6) Daily complaint buckets are aligned to local midnight, so dates are stable across refreshes; tools that use a different period phase may show the same complaint on an adjacent day.</div>`;
+}
+
+function render() {
+  if (!state.model) return;
+  renderMeta();
+  const app = document.getElementById('app');
+  app.innerHTML = renderCards() + renderHeadline() + renderDelta() + renderPosture() + renderVolume() +
+    renderByConfigSet() + renderComplainants() + renderUnattributed() + renderStores() +
+    renderPipeline() + renderInfra() + renderMethodology();
+  // mount deferred interactive tables (search/sort) after HTML is in place
+  const c = state.model.complainants;
+  document.getElementById('complainantTable').append(makeTable({
+    columns:[
+      {key:'email',title:'Recipient address',cls:'mono'},
+      {key:'arf_provider',title:'ARF feedback provider'},
+      {key:'recorded_at',title:'Recorded at',render:r=>fmtTs(r.recorded_at),type:'num'},
+      {key:'bounce_count',title:'Bounce count',type:'num'},
+      {key:'bouncing',title:'Bouncing flag',render:r=>r.bouncing?'<span class="bad">true</span>':'<span class="ok">false</span>'},
+      {key:'auth_provider',title:'Auth provider'},
+    ], rows:c, height:320,
+    filters:[{key:'arf_provider',label:'All ARF providers',value:r=>r.arf_provider}],
+  }));
+  const cs = state.model.config_sets;
+  const cov = state.model.suppression_coverage || [];
+  document.getElementById('covTable').append(makeTable({
+    columns:[
+      {key:'config_set',title:'Configuration set'},
+      {key:'routes_feedback',title:'Routes COMPLAINT',render:r=>r.routes_feedback?'<span class="ok">yes</span>':'<span class="bad">no</span>'},
+      {key:'sends',title:'Sends (CW)',type:'num',render:r=>(r.sends===null||r.sends===undefined)?'<span class="muted">n/a</span>':fmtInt(r.sends)},
+      {key:'complaints',title:'Complaints',type:'num'},
+      {key:'risk',title:'Risk',render:r=>r.risk==='high'?'<span class="bad">high</span>':(r.risk==='medium'?'<span class="warn">medium</span>':'<span class="ok">ok</span>')},
+      {key:'fix',title:'Fix',render:r=>r.routes_feedback?'<span class="muted">—</span>':`<button class="ghost mini" onclick="copyFix('${esc(r.config_set)}')" title="Copy an AWS CLI command that routes BOUNCE/COMPLAINT for this config set to CloudWatch">copy cmd</button>`},
+    ], rows:cov, height:320,
+    filters:[{key:'routes_feedback',label:'All config sets',value:r=>r.routes_feedback?'routes feedback':'GAP — no feedback routing'},{key:'risk',label:'All risk levels',value:r=>r.risk}],
+  }));
+  document.getElementById('csTable').append(makeTable({
+    columns:[
+      {key:'name',title:'Config set'},
+      {key:'event_types',title:'Event types',render:r=>(r.event_types||[]).join(', ')||'—'},
+      {key:'destinations',title:'Feedback destination',render:r=>(r.destinations||[]).map(d=>{
+        const parts=[]; if(d.sns)parts.push(esc(d.sns)); if(d.cloudwatch)parts.push('CloudWatch: '+esc(d.cloudwatch.join(', '))); if(d.firehose)parts.push('Firehose');
+        return parts.join('<br>')||'<span class="muted">no event destination</span>';})},
+      {key:'forwards_feedback',title:'Routes feedback',render:r=>r.forwards_feedback?'<span class="ok">yes</span>':'<span class="warn">no</span>'},
+    ], rows:cs, height:360,
+    filters:[{key:'forwards_feedback',label:'All config sets',value:r=>r.forwards_feedback?'routes feedback':'no feedback routing'}],
+  }));
+  const sns = state.model.sns_topics.filter(t=>t.subscribers.some(s=>s.protocol==='https'||s.protocol==='lambda'));
+  document.getElementById('snsTable').append(makeTable({
+    columns:[{key:'name',title:'Topic'},
+      {key:'subscribers',title:'Subscribers',render:r=>(r.subscribers||[]).map(s=>`<span class="mono">${esc(s.protocol)} → ${esc(s.endpoint)}</span>`).join('<br>')||'<span class="muted">none</span>'}],
+    rows:sns, height:300,
+  }));
+  const id = state.model.identities;
+  document.getElementById('idTable').innerHTML = '';
+  document.getElementById('idTable').append(makeTable({
+    columns:[
+      {key:'name',title:'Identity',cls:'mono'},
+      {key:'type',title:'Type'},
+      {key:'dkim_status',title:'DKIM status',render:r=>r.dkim_status==='SUCCESS'?`<span class="ok">${r.dkim_status}</span>`:(r.dkim_status==='FAILED'?`<span class="bad">${r.dkim_status}</span>`:r.dkim_status||'—')},
+      {key:'sending',title:'Sending',render:r=>r.sending?'yes':'no'},
+    ], rows:id.rows||[], height:340,
+    filters:[{key:'dkim_status',label:'All statuses',value:r=>r.dkim_status},{key:'type',label:'All types',value:r=>r.type}],
+  }));
+}
+
+/* ------------------------------------------------------------------ actions */
+function setRange(v){ state.range=v; render(); }
+function setSource(v){ state.source=v; render(); }
+
+async function doRefresh() {
+  const btn = document.getElementById('refresh');
+  btn.disabled = true; btn.innerHTML = '<span class="spinner"></span> Refreshing…';
+  try {
+    await fetch('/api/refresh', {method:'POST'});
+    toast('Refresh started — re-querying AWS…');
+    await pollUntilDone();
+  } catch(e) { toast('Refresh failed: '+e); }
+  btn.disabled = false; btn.innerHTML = icon('refresh') + ' Refresh';
+}
+
+function pollUntilDone() {
+  return new Promise(resolve => {
+    const tick = async () => {
+      let s;
+      try { s = await (await fetch('/api/status')).json(); }
+      catch(e) { return resolve(); }
+      state.status = s;
+      updateFresh(s);
+      if (!s.refreshing) {
+        if (s.last_error) toast('Refresh error: '+s.last_error, 6000);
+        else toast('Report refreshed.');
+        await load();
+        return resolve();
+      }
+      setTimeout(tick, 1500);
+    };
+    tick();
+  });
+}
+
+function updateFresh(s) {
+  const f = document.getElementById('freshtext');
+  const dot = document.querySelector('#freshtick .dot');
+  if (!s || !s.last_finished) { f.textContent = 'awaiting first collection…'; return; }
+  const ageMin = Math.floor((Date.now() - new Date(s.last_finished).getTime())/60000);
+  const min = Math.floor(s.refresh_interval_s/60);
+  f.textContent = s.refreshing ? 'refreshing…' : `updated ${ageMin<1?'just now':ageMin+'m ago'} · auto every ${min>=60?(min/60)+'h':min+'m'}`;
+  if (dot) dot.style.background = s.last_error ? 'var(--red)' : 'var(--ok)';
+}
+
+let loading = false;
+async function load() {
+  if (loading) return; loading = true;
+  try {
+    const r = await fetch('/api/report');
+    if (r.status === 202) { setTimeout(load, 2500); return; }
+    state.model = await r.json();
+    try { state.history = (await (await fetch('/api/history')).json()).entries || []; } catch(e) { state.history = []; }
+    render();
+    updateFresh(state.status || (await (await fetch('/api/status')).json()));
+  } catch(e) { console.error(e); } finally { loading = false; }
+}
+
+(function init(){
+  document.getElementById('brandmark').innerHTML = icon('flame');
+  document.getElementById('refreshicon').innerHTML = '';
+  document.getElementById('refresh').innerHTML = icon('refresh') + ' Refresh';
+  load();
+  setInterval(async ()=>{ try { state.status = await (await fetch('/api/status')).json(); updateFresh(state.status); } catch(e){} }, 30000);
+})();
+</script>
+</div></body></html>
