@@ -1,5 +1,9 @@
 # SES Complaint Report
 
+[![CodeQL](https://github.com/ryabinski-labs/ses-complaint-report/actions/workflows/codeql.yml/badge.svg)](https://github.com/ryabinski-labs/ses-complaint-report/actions/workflows/codeql.yml)
+[![OpenSSF Scorecard](https://api.scorecard.dev/projects/github.com/ryabinski-labs/ses-complaint-report/badge)](https://scorecard.dev/viewer/?uri=github.com/ryabinski-labs/ses-complaint-report)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
 **SES Complaint Report** is a self-hosted, refreshable dashboard for **Amazon SES
 deliverability and complaint posture** in a single AWS account. Instead of a
 one-shot HTML export, it is a page you can reopen, refresh against live AWS data, and search.

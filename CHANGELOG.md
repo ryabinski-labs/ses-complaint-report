@@ -6,23 +6,6 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### Added
-
-- **Suppression coverage** section: every configuration set flagged as routing or
-  not routing `BOUNCE`/`COMPLAINT`, risk-ranked, with a copy-paste AWS CLI fix command.
-- **Change tracking**: refresh snapshots persisted to `data/history.jsonl`; the
-  report now shows deltas (new complaints, rate movement, new complainant
-  addresses, new complaint days) and a rolling-rate sparkline across refreshes.
-- **Export**: full-report JSON download, per-table CSV export, and copy-as-Markdown summary.
-- `GET /api/history` endpoint; `SESREPORT_HISTORY_MAX` config.
-- Frontend contract test asserting the demo model has every field the UI reads.
-- SVG favicon.
-- `GOVERNANCE.md`, `NOTICE` (third-party attribution), and `examples/` ready-made configs.
-- README dashboard screenshot.
-- SPDX `MIT` headers across source files.
-- `oss_audit_gate.py` wired into CI: fails when the OSS readiness audits regress
-  (vendored `opensource_audit` / `readme_audit` / `license_metadata_audit` / `workflow_audit`).
-
 ## [1.0.0] - 2026-10-11
 
 ### Added
@@ -43,6 +26,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `./start.sh` service script (`start` / `fg` / `stop` / `status` / `logs`).
 - Demo mode (`SESREPORT_DEMO=1`) serving a synthetic dataset with no AWS calls.
 - Email redaction (`SESREPORT_REDACT_EMAILS`).
+- **Suppression coverage** section: every configuration set flagged as routing or
+  not routing `BOUNCE`/`COMPLAINT`, risk-ranked, with a copy-paste AWS CLI fix command.
+- **Change tracking**: refresh snapshots persisted to `data/history.jsonl`; the
+  report now shows deltas (new complaints, rate movement, new complainant
+  addresses, new complaint days) and a rolling-rate sparkline across refreshes.
+- **Export**: full-report JSON download, per-table CSV export, and copy-as-Markdown summary.
+- `GET /api/history` endpoint; `SESREPORT_HISTORY_MAX` config.
+- `GOVERNANCE.md`, `NOTICE` (third-party attribution), `MAINTAINERS.md`, and
+  `examples/` ready-made configs.
+- README dashboard screenshot and SVG favicon.
+- SPDX `MIT` headers across source files.
+- Frontend contract test asserting the demo model has every field the UI reads.
+- Security CI: CodeQL code scanning and OpenSSF Scorecard supply-chain analysis.
+- CI: `oss_audit_gate.py` fails when the OSS readiness audits regress
+  (vendored `opensource_audit` / `readme_audit` / `license_metadata_audit` / `workflow_audit`).
 
 [Unreleased]: https://github.com/ryabinski-labs/ses-complaint-report/compare/v1.0.0...HEAD
 [1.0.0]: https://github.com/ryabinski-labs/ses-complaint-report/releases/tag/v1.0.0
