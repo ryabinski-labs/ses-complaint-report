@@ -50,7 +50,9 @@ def fuzz_history(data: bytes) -> None:
 
 
 def fuzz_config(data: bytes) -> None:
-    value = data.decode("utf-8", "replace")
+    # An environment value cannot contain a NUL byte, so strip NULs to keep the
+    # harness within states a real environment can hold.
+    value = data.decode("utf-8", "replace").replace("\x00", "")
     for key in _ENV_KEYS:
         os.environ[key] = value
     try:
