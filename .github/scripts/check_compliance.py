@@ -1,4 +1,6 @@
 #!/usr/bin/env python3
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Yoni Ryabinski
 """Fail CI when required OSS files are missing or sensitive material is tracked."""
 
 from __future__ import annotations

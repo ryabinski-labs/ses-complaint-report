@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Yoni Ryabinski
+
 """FastAPI service: serves the interactive report and refreshes AWS data."""
 
 from __future__ import annotations

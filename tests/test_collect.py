@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Yoni Ryabinski
+
 import datetime as dt
 
 from sesreport.collect import _day, _iso

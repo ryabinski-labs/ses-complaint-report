@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Yoni Ryabinski
+
 """Live AWS data collection for the SES complaint report.
 
 Every section is isolated: a failing source records an error and the rest of

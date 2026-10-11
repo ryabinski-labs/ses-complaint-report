@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Yoni Ryabinski
 # Start the live SES Complaint Report service.
 #
 #   ./start.sh          start in the background, print + open the URL

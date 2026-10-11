@@ -17,6 +17,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `GET /api/history` endpoint; `SESREPORT_HISTORY_MAX` config.
 - Frontend contract test asserting the demo model has every field the UI reads.
 - SVG favicon.
+- `GOVERNANCE.md`, `NOTICE` (third-party attribution), and `examples/` ready-made configs.
+- README dashboard screenshot.
+- SPDX `MIT` headers across source files.
+- `oss_audit_gate.py` wired into CI: fails when the OSS readiness audits regress
+  (vendored `opensource_audit` / `readme_audit` / `license_metadata_audit` / `workflow_audit`).
 
 ## [1.0.0] - 2026-10-11
 

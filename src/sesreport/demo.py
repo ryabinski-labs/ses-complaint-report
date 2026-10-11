@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Yoni Ryabinski
+
 """Synthetic model for demo mode — lets a new user run the report with no AWS."""
 
 from __future__ import annotations
