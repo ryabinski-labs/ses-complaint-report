@@ -1,0 +1,8 @@
+# Sensitive areas require the maintainer's review.
+/.github/           @cigan1
+/src/sesreport/collect.py   @cigan1
+/src/sesreport/config.py    @cigan1
+/start.sh           @cigan1
+/MAINTAINERS.md     @cigan1
+/SECURITY.md        @cigan1
+/LICENSE            @cigan1

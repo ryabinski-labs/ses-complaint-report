@@ -1,0 +1,55 @@
+[project]
+name = "ses-complaint-report"
+version = "1.0.0"
+description = "Self-hosted, refreshable dashboard for Amazon SES complaint and deliverability posture"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+authors = [{ name = "Yoni Ryabinski", email = "cigan1@gmail.com" }]
+keywords = ["aws", "ses", "email", "deliverability", "complaints", "cloudwatch", "dashboard"]
+classifiers = [
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Operating System :: OS Independent",
+    "Topic :: Communications :: Email",
+    "Topic :: System :: Monitoring",
+]
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.27",
+    "boto3>=1.34",
+    "python-dotenv>=1.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/ryabinski-labs/ses-complaint-report"
+Repository = "https://github.com/ryabinski-labs/ses-complaint-report"
+Issues = "https://github.com/ryabinski-labs/ses-complaint-report/issues"
+Changelog = "https://github.com/ryabinski-labs/ses-complaint-report/blob/main/CHANGELOG.md"
+
+[project.scripts]
+sesreport = "sesreport.app:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/sesreport"]
+
+[tool.uv]
+package = true
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.5"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "W"]
+ignore = ["E501"]

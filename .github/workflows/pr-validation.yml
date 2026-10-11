@@ -1,0 +1,40 @@
+name: PR validation
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# Read-only by default; no secrets are exposed to PR code.
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5
+        with:
+          enable-cache: true
+
+      - name: Sync dependencies
+        run: uv sync --frozen
+
+      - name: Lint
+        run: uv run ruff check .
+
+      - name: Tests
+        run: uv run pytest -q
+
+      - name: OSS compliance checks
+        run: python3 .github/scripts/check_compliance.py
+
+      - name: Package smoke test (build)
+        run: uv build
