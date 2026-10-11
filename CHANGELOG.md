@@ -6,6 +6,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Fuzzing: an Atheris harness (`fuzz/fuzz_targets.py`) covering the history
+  JSON-lines parser and the environment config loader, a deterministic
+  regression corpus in the test suite, and a bounded `Fuzz` CI workflow.
+- `parse_history` is now a pure, unit-testable function used by `/api/history`.
+
 ## [1.0.0] - 2026-10-11
 
 ### Added

@@ -11,6 +11,7 @@ import logging
 import os
 import threading
 import time
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import uvicorn
@@ -69,19 +70,24 @@ def _append_history(model: dict) -> None:
         log.warning("could not write history: %s", e)
 
 
-def _read_history() -> list[dict]:
-    if not HISTORY_FILE.exists():
-        return []
-    out = []
-    for line in HISTORY_FILE.read_text().splitlines():
+def parse_history(text: str) -> list[dict]:
+    """Parse JSON-lines history text, skipping blank or malformed lines."""
+    out: list[dict] = []
+    for line in text.splitlines():
         line = line.strip()
         if not line:
             continue
         try:
             out.append(json.loads(line))
-        except ValueError:
+        except (ValueError, RecursionError):
             continue
     return out
+
+
+def _read_history() -> list[dict]:
+    if not HISTORY_FILE.exists():
+        return []
+    return parse_history(HISTORY_FILE.read_text())
 
 STATE_LOCK = threading.Lock()
 STATE = {
@@ -159,15 +165,20 @@ def _start_background() -> None:
     threading.Thread(target=_hourly_loop, daemon=True, name="hourly-refresh").start()
 
 
-app = FastAPI(title="SES Complaint Report")
-
-
-@app.on_event("startup")
-def _startup():
+def _startup() -> None:
     _load_cache()
     _start_background()
     # always kick a fresh collection so the first page load is current
     threading.Thread(target=_refresh_worker, daemon=True, name="initial-refresh").start()
+
+
+@asynccontextmanager
+async def _lifespan(_app: FastAPI):
+    _startup()
+    yield
+
+
+app = FastAPI(title="SES Complaint Report", lifespan=_lifespan)
 
 
 @app.get("/")

@@ -45,6 +45,7 @@ package = true
 
 [dependency-groups]
 dev = ["pytest>=8", "ruff>=0.5"]
+fuzz = ["atheris>=2.3.0; sys_platform == 'linux'"]
 
 [tool.ruff]
 line-length = 100
