@@ -58,6 +58,7 @@ def fuzz_config(data: bytes) -> None:
     try:
         config.load()
     except ValueError:
+        # A non-numeric port/interval is the only expected, documented failure.
         pass
     finally:
         for key in _ENV_KEYS:
