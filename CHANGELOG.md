@@ -8,6 +8,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- CodeQL now also runs on pull requests, so code-scanning results attach to PR
+  head SHAs (which the OpenSSF Scorecard SAST check measures). The audit gate
+  allow-lists exactly this workflow's `security-events: write`.
 - Fuzzing: an Atheris harness (`fuzz/fuzz_targets.py`) covering the history
   JSON-lines parser and the environment config loader, a deterministic
   regression corpus in the test suite, and a bounded `Fuzz` CI workflow.
