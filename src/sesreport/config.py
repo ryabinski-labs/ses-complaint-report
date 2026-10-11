@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Yoni Ryabinski
+
 """Runtime configuration, read from environment (and an optional .env)."""
 
 from __future__ import annotations

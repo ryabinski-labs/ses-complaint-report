@@ -17,6 +17,8 @@ This tool pulls it together into one view and keeps it current.
 0.10% review line, who complained, what infra routes the feedback, and when the
 data expires — refreshed on demand or hourly.
 
+![SES Complaint Report dashboard](docs/screenshot.png)
+
 ## Quickstart
 
 ```sh
@@ -156,7 +158,8 @@ uv run sesreport                       # start the server
 
 Best-effort, community support. Open a GitHub issue for bugs or questions; see
 [SUPPORT.md](SUPPORT.md). Report security issues privately per
-[SECURITY.md](SECURITY.md).
+[SECURITY.md](SECURITY.md). How the project is run is described in
+[GOVERNANCE.md](GOVERNANCE.md).
 
 ## License
 

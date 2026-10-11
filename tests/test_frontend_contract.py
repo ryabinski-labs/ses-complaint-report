@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: MIT
+# Copyright (c) 2026 Yoni Ryabinski
+
 """Contract test: the frontend only reads fields the backend actually produces.
 
 Catches the class of bug where a field is renamed in the collector but still

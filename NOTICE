@@ -1,0 +1,28 @@
+SES Complaint Report
+Copyright (c) 2026 Yoni Ryabinski
+
+This product includes software developed by third parties.
+
+Runtime dependencies
+  FastAPI                     MIT License            https://github.com/fastapi/fastapi
+  Uvicorn                     BSD 3-Clause License   https://github.com/encode/uvicorn
+  boto3 / botocore            Apache License 2.0     https://github.com/boto/boto3
+  python-dotenv               BSD 3-Clause License   https://github.com/theskumar/python-dotenv
+
+Development dependencies
+  pytest                      MIT License            https://github.com/pytest-dev/pytest
+  Ruff                        MIT License            https://github.com/astral-sh/ruff
+
+Web fonts (loaded at runtime from Google Fonts)
+  Fraunces                    SIL Open Font License 1.1
+  IBM Plex Sans               SIL Open Font License 1.1
+  IBM Plex Mono               SIL Open Font License 1.1
+
+Vendored tooling
+  .github/scripts/opensource_audit.py
+  .github/scripts/readme_audit.py
+  .github/scripts/license_metadata_audit.py
+  .github/scripts/workflow_audit.py
+  are this project's own OSS readiness audit scripts.
+
+Full license texts are available from the respective projects.

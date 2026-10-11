@@ -36,5 +36,8 @@ jobs:
       - name: OSS compliance checks
         run: python3 .github/scripts/check_compliance.py
 
+      - name: OSS readiness audit gate
+        run: python3 .github/scripts/oss_audit_gate.py
+
       - name: Package smoke test (build)
         run: uv build
