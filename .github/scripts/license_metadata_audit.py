@@ -36,7 +36,7 @@ COMMON_SPDX = {
 }
 
 SPDX_TOKEN = re.compile(r"^[A-Za-z0-9-.+]+$")
-LICENSE_EXPR = re.compile(r"^[A-Za-z0-9-.+() ]+(?:\s+(?:AND|OR|WITH)\s+[A-Za-z0-9-.+() ]+)*$")
+LICENSE_EXPR = re.compile(r"^[A-Za-z0-9.+()-]+(?:\s+(?:AND|OR|WITH)\s+[A-Za-z0-9.+()-]+)*$")
 
 
 @dataclass
