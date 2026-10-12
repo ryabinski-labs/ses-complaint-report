@@ -1,0 +1,202 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  Self-owned SES complaint/bounce ledger: the DynamoDB table that retains SES
+  feedback independently of CloudWatch's 455-day window and of VDM, plus the
+  Lambda that ingests it from the account's SES feedback SNS topics. The report
+  in this repo reads the table read-only; this stack is the only writer.
+
+  Why: the account-wide CloudWatch `Complaint` metric carries no dimension for
+  sends made without a configuration set and keeps only 455 days. A
+  recipient-level ledger retires the dependence on per-message VDM pricing and
+  keeps full attribution.
+
+  Privacy: the partition key is a SHA-256 of the address and only a redacted
+  address is stored; a TTL expires every row on RetentionDays (~13 months).
+
+  The ingest Lambda is subscribed to the feedback topics by
+  infra/deploy_ledger.sh, not here, because those topics belong to other project
+  stacks. The invoke permission below is account-scoped so that script needs no
+  re-deploy to add a topic.
+
+Parameters:
+  TableName:
+    Type: String
+    Default: ses_feedback_ledger
+    Description: Name of the DynamoDB ledger table.
+    AllowedPattern: '^[A-Za-z0-9_.-]{3,255}$'
+
+  RetentionDays:
+    Type: Number
+    Default: 396
+    MinValue: 1
+    MaxValue: 3650
+    Description: >-
+      Days an item lives before DynamoDB expires it (TTL). 396 ~= 13 months,
+      matching CloudWatch's complaint retention.
+
+  LogRetentionDays:
+    Type: Number
+    Default: 90
+    AllowedValues: [1, 3, 5, 7, 14, 30, 60, 90, 120, 150, 180, 365, 400, 545, 731, 1096, 1827, 2192, 2557, 2922, 3288, 3653]
+
+  LambdaCodeBucket:
+    Type: String
+    Description: S3 bucket holding the packaged ingest Lambda code. Set by deploy_ledger.sh.
+
+  LambdaCodeKey:
+    Type: String
+    Description: S3 key of the packaged ingest Lambda code. Set by deploy_ledger.sh.
+
+Resources:
+
+  # ==========================================================
+  # DynamoDB ledger
+  #   PK recipient_hash (SHA-256 of address)  SK ts_epoch#type#messageId
+  #   GSI by_day    : day  + ts_epoch  -> the report's daily timeline
+  #   GSI by_source : source_key + ts_epoch -> per config-set / identity attribution
+  # Retained on stack deletion: this is the state we are deliberately owning.
+  # ==========================================================
+  FeedbackLedger:
+    Type: AWS::DynamoDB::Table
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      TableName: !Ref TableName
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: recipient_hash
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+        - AttributeName: day
+          AttributeType: S
+        - AttributeName: ts_epoch
+          AttributeType: N
+        - AttributeName: source_key
+          AttributeType: S
+      KeySchema:
+        - AttributeName: recipient_hash
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: by_day
+          KeySchema:
+            - AttributeName: day
+              KeyType: HASH
+            - AttributeName: ts_epoch
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+        - IndexName: by_source
+          KeySchema:
+            - AttributeName: source_key
+              KeyType: HASH
+            - AttributeName: ts_epoch
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      SSESpecification:
+        SSEEnabled: true
+      Tags:
+        - Key: Project
+          Value: ses-complaint-report
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  # ==========================================================
+  # Ingest Lambda: SNS feedback -> normalised ledger rows.
+  # ==========================================================
+  IngestLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${AWS::StackName}-ingest'
+      RetentionInDays: !Ref LogRetentionDays
+
+  IngestRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: ledger-ingest
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: logs:CreateLogStream
+                Resource: !Sub '${IngestLogGroup.Arn}:*'
+              - Effect: Allow
+                Action: logs:PutLogEvents
+                Resource: !Sub '${IngestLogGroup.Arn}:*'
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                Resource:
+                  - !GetAtt FeedbackLedger.Arn
+                  - !Sub '${FeedbackLedger.Arn}/index/*'
+      Tags:
+        - Key: Project
+          Value: ses-complaint-report
+
+  IngestFunction:
+    Type: AWS::Lambda::Function
+    DependsOn: IngestLogGroup
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-ingest'
+      Description: Normalise SES bounce/complaint feedback into the self-owned ledger
+      Runtime: python3.12
+      Handler: index.handler
+      Architectures: [arm64]
+      MemorySize: 256
+      Timeout: 30
+      Role: !GetAtt IngestRole.Arn
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref TableName
+          RETENTION_DAYS: !Ref RetentionDays
+          REDACT_PLAINTEXT: 'true'
+          AUTO_CONFIRM: 'true'
+      Code:
+        S3Bucket: !Ref LambdaCodeBucket
+        S3Key: !Ref LambdaCodeKey
+      Tags:
+        - Key: Project
+          Value: ses-complaint-report
+
+  # Account-scoped invoke permission: deploy_ledger.sh subscribes this function
+  # to each feedback topic without needing a fresh permission per topic.
+  IngestInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref IngestFunction
+      Principal: sns.amazonaws.com
+      SourceArn: !Sub 'arn:${AWS::Partition}:sns:${AWS::Region}:${AWS::AccountId}:*'
+
+Outputs:
+  TableName:
+    Description: Ledger table name. Set as SESREPORT_LEDGER_TABLE for the report.
+    Value: !Ref FeedbackLedger
+    Export:
+      Name: !Sub '${AWS::StackName}-table-name'
+
+  FunctionArn:
+    Description: Ingest Lambda ARN (used by deploy_ledger.sh to subscribe topics).
+    Value: !GetAtt IngestFunction.Arn
+
+  FunctionName:
+    Value: !Ref IngestFunction
+    Export:
+      Name: !Sub '${AWS::StackName}-function-name'

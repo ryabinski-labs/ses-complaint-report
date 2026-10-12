@@ -49,6 +49,45 @@ def demo_model(seed: int = 7) -> dict:
     ]
     complainants.sort(key=lambda x: x["recorded_at"])
 
+    # Recipient-level complaint records, as an application store would retain
+    # them. Includes a mailbox-simulator complaint: synthetic feedback from a
+    # pipeline test that still counts in the CloudWatch metric.
+    complaint_records = [
+        {
+            "email": c["email"],
+            "store": "demo-accounts",
+            "detail": c["arf_provider"],
+            "source": "app account",
+            "first_seen": c["recorded_at"],
+            "last_seen": c["recorded_at"],
+            "hits": None,
+            "simulator": False,
+        }
+        for c in complainants
+    ] + [
+        {
+            "email": "complaint@simulator.amazonses.com",
+            "store": "demo-email-suppressions",
+            "detail": "abuse",
+            "source": "sns",
+            "first_seen": (today - dt.timedelta(days=1)).isoformat(),
+            "last_seen": (today - dt.timedelta(days=1)).isoformat(),
+            "hits": 2,
+            "simulator": True,
+        }
+    ]
+    complaint_records.sort(key=lambda r: r["last_seen"] or "", reverse=True)
+    _sim = sum(1 for r in complaint_records if r["simulator"])
+    attribution = {
+        "cloudwatch_recorded": total_complaints,
+        "records": len(complaint_records),
+        "real_records": len(complaint_records) - _sim,
+        "simulator_records": _sim,
+        "ledger_records": 0,
+        "store_records": len(complaint_records),
+        "latest_record": complaint_records[0]["last_seen"] if complaint_records else None,
+    }
+
     config_set_complaints = [
         {
             "config_set": "transactional",
@@ -115,6 +154,15 @@ def demo_model(seed: int = 7) -> dict:
         },
         "config_set_complaints": config_set_complaints,
         "complainants": complainants,
+        "complaint_records": complaint_records,
+        "attribution": attribution,
+        "ledger": {
+            "configured": False,
+            "table": None,
+            "records": [],
+            "oldest": None,
+            "newest": None,
+        },
         "unattributed": [
             {"domain": "outlook.de", "feedback_type": "abuse", "events": 1},
             {"domain": "comcast.net", "feedback_type": "abuse", "events": 1},
@@ -143,6 +191,14 @@ def demo_model(seed: int = 7) -> dict:
             ],
             "other_regions": [{"region": "us-west-2", "count": 1, "names": ["mail.demo.example"]}],
         },
+        "identity_feedback": [
+            {
+                "identity": "send0.example.com",
+                "bounce_topic": "arn:aws:sns:us-east-1:000000000000:feedback-topic",
+                "complaint_topic": "arn:aws:sns:us-east-1:000000000000:feedback-topic",
+                "forwarding_enabled": False,
+            }
+        ],
         "sns_topics": [
             {"name": "feedback-topic", "arn": "arn:aws:sns:us-east-1:000000000000:feedback-topic",
              "subscribers": [{"protocol": "lambda", "endpoint": "arn:aws:lambda:us-east-1:000000000000:function:parse-feedback"}]}

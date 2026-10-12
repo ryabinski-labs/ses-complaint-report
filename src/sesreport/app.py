@@ -52,6 +52,9 @@ def _snapshot(model: dict) -> dict:
         "complainants": sorted(
             c.get("email", "") for c in model.get("complainants", []) if c.get("email")
         ),
+        "complaint_emails": sorted(
+            {r.get("email", "") for r in model.get("complaint_records", []) if r.get("email")}
+        ),
         "complaint_days": [d.get("date") for d in met.get("complaints_by_day", [])],
         "config_set_events": {
             c["config_set"]: c["events"] for c in model.get("config_set_complaints", [])

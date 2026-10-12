@@ -61,10 +61,16 @@ SESREPORT_DEMO=1 uv run sesreport
 - **Complaint volume** — complaint / send / bounce counts and the rolling
   `Reputation.ComplaintRate` vs the AWS 0.10% review line and an internal alert line.
 - **Complaints by configuration set** — from the `ses:configuration-set` metric dimension.
-- **Individual complaint records** — complainants persisted by the app (address,
-  ARF feedback provider, timestamp), plus per-store counts.
+- **Individual complaint records** — a unified, recipient-level view across every
+  configured app store (address, store, feedback detail, source, first/last seen,
+  hit count), with AWS **mailbox-simulator** (test) addresses flagged, plus the
+  per-app account complainants and per-store counts.
+- **Complaint attribution** — reconciles the account-wide CloudWatch complaint
+  count against the recipient records each application store retained, separating
+  real complainants from simulator/test artefacts.
 - **Infrastructure map** — sending identities and DKIM status, configuration sets
-  and their event destinations, SNS topics/subscribers, the complaint DLQ.
+  and their event destinations, identity-level Bounce/Complaint notification
+  topics, SNS topics/subscribers, the complaint DLQ.
 - **Retention & expiry** — CloudWatch's 455-day aging of complaint data points,
   the non-expiring SES suppression list, and the adaptive reputation window, with
   per-complaint expiry dates.
@@ -77,6 +83,37 @@ Every table supports search, sort, category filters, and CSV export; the charts
 have a time-range picker and a per-config-set toggle. The whole report exports as
 JSON, and a Markdown summary copies to the clipboard.
 
+## Own your complaint state (ledger)
+
+CloudWatch's `Complaint` metric is account-wide, keeps only 455 days, and
+carries no dimension for sends made without a configuration set. VDM closes the
+attribution gap but is priced per message. This repo instead deploys a
+**self-owned ledger** you control:
+
+- `infra/ledger-stack.yaml` — a DynamoDB table (`recipient_hash` partition key,
+  `by_day` and `by_source` GSIs, TTL) plus an ingest Lambda subscribed to your
+  SES feedback SNS topics. It writes one deduped, attributed row per
+  bounce/complaint, keyed on the SHA-256 of the address with only a redacted
+  address stored and a 13-month TTL.
+- `infra/deploy_ledger.sh` — packages and deploys the stack, then subscribes the
+  Lambda to your feedback topics (idempotent; re-run when you add a topic).
+
+Point the report at it:
+
+```sh
+./infra/deploy_ledger.sh ses-complaint-report-ledger us-east-1 my-artifacts-bucket \
+  my-app-ses-feedback,my-app-ses-bounces
+# then set SESREPORT_LEDGER_TABLE=<table from the stack output> in .env
+```
+
+The topic names are passed on the command line (they are your account's, so they
+stay out of the repo). Leave them off to deploy the table + Lambda first and wire
+subscriptions later.
+
+The report stays **read-only** — it reads the table; the Lambda is the only
+writer. With the ledger configured, its recipient records become the primary
+source of truth for attribution and survive past CloudWatch's window.
+
 ## When to use it (and when not to)
 
 **Use it** to audit or monitor a single SES account's complaint posture, to find
@@ -85,7 +122,8 @@ AWS would see when it reviews your account.
 
 **Don't use it** as a multi-tenant or fleet-wide dashboard (it audits one account
 per instance), as an alerting system (it displays; it doesn't page), or as a
-write tool — it is strictly read-only against AWS.
+write tool — the report process is strictly read-only against AWS. (The optional
+ledger in `infra/` is a separate, opt-in writer; the report only reads it.)
 
 ## Requirements
 
@@ -125,6 +163,7 @@ Copy `.env.example` to `.env` and edit:
 | `SESREPORT_COMPLAINT_ATTR` / `_VALUE` | Filter attribute/value (default `bounce_type` = `Complaint`) |
 | `SESREPORT_COMPLAINT_QUEUE` | Complaint DLQ name (blank = skip) |
 | `SESREPORT_SUPPRESSION_TABLES` | Comma-separated app suppression tables to count |
+| `SESREPORT_LEDGER_TABLE` | Self-owned complaint ledger table (see infra/); blank = fall back to CloudWatch + app stores |
 | `SESREPORT_REDACT_EMAILS` | Mask recipient addresses in the API payload |
 | `SESREPORT_DEMO` | Serve synthetic data instead of calling AWS |
 | `SESREPORT_HOST`, `SESREPORT_PORT` | Local bind address (default `127.0.0.1:8787`) |
