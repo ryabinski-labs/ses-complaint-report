@@ -22,10 +22,14 @@ REQUIRED_TOP = {
     "metrics",
     "config_set_complaints",
     "complainants",
+    "complaint_records",
+    "attribution",
+    "ledger",
     "unattributed",
     "stores",
     "config_sets",
     "identities",
+    "identity_feedback",
     "sns_topics",
     "complaint_queue",
     "suppression_list",
@@ -84,6 +88,16 @@ def test_nested_contracts():
     for row in m["complainants"]:
         assert {"email", "arf_provider", "recorded_at", "bounce_count", "bouncing"} <= set(row)
 
+    for row in m["complaint_records"]:
+        assert {"email", "store", "detail", "source", "first_seen", "last_seen", "hits", "simulator"} <= set(row)
+
+    assert {"cloudwatch_recorded", "records", "real_records", "simulator_records"} <= set(m["attribution"])
+
+    assert {"configured", "table", "records"} <= set(m["ledger"])
+
+    for row in m["identity_feedback"]:
+        assert {"identity", "bounce_topic", "complaint_topic", "forwarding_enabled"} <= set(row)
+
     for row in m["suppression_coverage"]:
         assert {"config_set", "routes_feedback", "risk"} <= set(row)
 
@@ -95,3 +109,20 @@ def test_complaint_counts_are_consistent():
     m = _model()
     met = m["metrics"]
     assert met["total_complaints"] == sum(d["count"] for d in met["complaints_by_day"])
+
+
+def test_attribution_counts_are_self_consistent():
+    # The UI prints "records" alongside the ledger and store subtotals, so the
+    # three must agree.
+    a = _model()["attribution"]
+    assert a["records"] == a["ledger_records"] + a["store_records"]
+    assert a["real_records"] + a["simulator_records"] == a["records"]
+
+
+def test_dashboard_has_accessibility_hooks():
+    # Guards the a11y fixes: a main landmark, accessible names on the table
+    # controls, and keyboard-focusable scroll regions.
+    js = INDEX.read_text()
+    assert '<main id="app"' in js, "dashboard needs a <main> landmark"
+    assert "'aria-label'" in js, "table controls need accessible names"
+    assert "tabindex:'0'" in js, "scrollable table regions must be focusable"

@@ -15,6 +15,38 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   JSON-lines parser and the environment config loader, a deterministic
   regression corpus in the test suite, and a bounded `Fuzz` CI workflow.
 - `parse_history` is now a pure, unit-testable function used by `/api/history`.
+- **Complaint attribution**: a unified, recipient-level complaint-record table
+  across *all* configured app stores (not just the account table), with AWS
+  **mailbox-simulator** addresses flagged as tests and an attribution summary
+  reconciling the CloudWatch count against what the stores retained.
+- **Identity-level feedback routing**: the report now reads
+  `GetIdentityNotificationAttributes`, so identities that deliver
+  `BOUNCE`/`COMPLAINT` through their own SNS topic are shown — feedback for sends
+  that carried no configuration set, which the per-config-set map cannot see.
+- **Self-owned feedback ledger** (`infra/ledger-stack.yaml` + `deploy_ledger.sh`):
+  a DynamoDB table and ingest Lambda that retain deduped, attributed
+  bounce/complaint rows past CloudWatch's 455-day window, keyed on a SHA-256 of
+  the address (redacted plaintext, 13-month TTL) — no VDM required. The report
+  reads it read-only when `SESREPORT_LEDGER_TABLE` is set.
+
+### Fixed
+
+- **Attribution double-count**: once the ledger was deployed, a complaint the
+  ledger *and* an application store both retained was counted twice, because the
+  ledger stores a redacted address while a store keeps the full one. The merge
+  now joins on a source-independent identity (the ledger's `recipient_hash`, or a
+  SHA-256 of an unredacted store address) and treats ledger rows as
+  authoritative, so `records`, `real_records`, and the ledger/store subtotals
+  agree.
+- **Ingest Lambda robustness**: a shared feedback/ops topic can carry a JSON
+  payload that is not an object (a bare array or string). The handler now ignores
+  those and isolates each record, so one malformed message can no longer fail the
+  whole invocation (and trigger SNS retries).
+- **Dashboard accessibility**: added a `<main>` landmark, accessible names on the
+  table search/filter controls, keyboard-focusable scroll regions, and a valid
+  heading order — `a11y_audit` now reports zero violations.
+- `.gitignore` now excludes `dist/` and `build/` so `uv build` artefacts cannot
+  be committed.
 
 ## [1.0.0] - 2026-10-11
 

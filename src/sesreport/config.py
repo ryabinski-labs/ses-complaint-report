@@ -53,6 +53,7 @@ class Config:
     complaint_value: str = "Complaint"
     complaint_queue: str = ""
     suppression_tables: list[str] = field(default_factory=list)
+    ledger_table: str = ""
     redact_emails: bool = False
     demo: bool = False
     host: str = "127.0.0.1"
@@ -74,6 +75,7 @@ def load() -> Config:
         complaint_value=os.environ.get("SESREPORT_COMPLAINT_VALUE", "Complaint"),
         complaint_queue=os.environ.get("SESREPORT_COMPLAINT_QUEUE", ""),
         suppression_tables=_split(os.environ.get("SESREPORT_SUPPRESSION_TABLES", "")),
+        ledger_table=os.environ.get("SESREPORT_LEDGER_TABLE", ""),
         redact_emails=_bool("SESREPORT_REDACT_EMAILS", False),
         demo=_bool("SESREPORT_DEMO", False),
         host=os.environ.get("SESREPORT_HOST", "127.0.0.1"),

@@ -10,6 +10,7 @@ the report still renders. Returns a plain-dict "model" that the frontend draws.
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -36,6 +37,13 @@ METRIC_EPOCH = dt.datetime(2026, 5, 18, tzinfo=dt.timezone.utc)
 RETENTION_DAYS = 455
 LOG_GROUP_PREFIX = CFG.log_group_prefix
 LOG_GROUP_MATCH = CFG.log_group_match
+
+# SES mailbox-simulator domain. Sending to `complaint@simulator.amazonses.com`
+# (or `bounce@…`) makes SES fabricate feedback so a pipeline can be tested end
+# to end. Those "complaints" still increment the account-wide Complaint count,
+# but they are test artifacts, not a subscriber pressing "spam" — worth
+# separating so recorded complaints are not mistaken for real ones.
+SIMULATOR_DOMAIN = "simulator.amazonses.com"
 
 
 def _client(name, region=REGION):
@@ -254,6 +262,68 @@ def _maybe_redact(email: str) -> str:
     return f"{keep}{'*' * max(3, len(local) - 1)}@{domain}"
 
 
+def _is_simulator(email: str) -> bool:
+    """True for AWS SES mailbox-simulator addresses — synthetic feedback that
+    inflates the Complaint count but is not a real complainant."""
+    return bool(email) and "@" in email and email.rsplit("@", 1)[1].lower() == SIMULATOR_DOMAIN
+
+
+def _identity_hash(value: str) -> str:
+    """A source-independent identity for a recipient address.
+
+    The ledger keeps only a *redacted* address and stores the SHA-256 of the
+    real one as ``recipient_hash``; application stores keep the full address.
+    Hashing either input with one function lets the merge recognise a single
+    complainant across sources instead of counting the redacted ledger row and
+    the full store row as two records. A redacted value that is not already a
+    hash is returned unchanged so two equally-redacted rows still match.
+    """
+    v = str(value or "").strip().lower()
+    if not v:
+        return ""
+    if len(v) == 64 and all(c in "0123456789abcdef" for c in v):
+        return v  # already a SHA-256 (the ledger's recipient_hash)
+    if "*" in v:
+        return v  # redacted and unhashable; match on the redacted string
+    return hashlib.sha256(v.encode("utf-8")).hexdigest()
+
+
+def merge_complaint_records(
+    ledger_records: list[dict], store_records: list[dict]
+) -> tuple[list[dict], list[dict], list[dict]]:
+    """Collapse ledger and application-store rows into one row per complainant
+    per day, with the ledger authoritative.
+
+    Matching on the address string alone would count a complaint twice once the
+    ledger is deployed: the ledger stores a *redacted* address, while an
+    application store keeps the full one. Identity is compared with
+    ``_identity_hash`` instead. Ledger rows are considered first, so a store row
+    never displaces a ledger row for the same complainant and day.
+
+    Returns ``(merged, kept_ledger, kept_store)``; ``merged`` is newest-first.
+    """
+    seen: set[tuple] = set()
+
+    def _merge(rows: list[dict]) -> list[dict]:
+        kept = []
+        for r in rows:
+            key = (
+                _identity_hash(r.get("recipient_hash") or r.get("email", "")),
+                (r.get("last_seen") or "")[:10],
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            kept.append(r)
+        return kept
+
+    kept_ledger = _merge(ledger_records)
+    kept_store = _merge(store_records)
+    merged = kept_ledger + kept_store
+    merged.sort(key=lambda r: r.get("last_seen") or "", reverse=True)
+    return merged, kept_ledger, kept_store
+
+
 def collect_complainants(errors: Errors) -> list[dict]:
     if not CFG.complaint_table:
         return []
@@ -276,34 +346,112 @@ def collect_complainants(errors: Errors) -> list[dict]:
     return out
 
 
-def collect_suppression_counts(errors: Errors) -> list[dict]:
+def _suppression_record(item: dict, store: str) -> dict:
+    """Normalise one application suppression row into a recipient-level
+    complaint record shared across stores (see ``complaint_records``)."""
+    email = item.get("email", "")
+    return {
+        "email": _maybe_redact(email),
+        "store": store,
+        "detail": str(item.get("detail", "") or ""),
+        "source": str(item.get("source", "") or ""),
+        "first_seen": _iso(item.get("first_suppressed_at")),
+        "last_seen": _iso(item.get("last_suppressed_at") or item.get("first_suppressed_at")),
+        "hits": int(item.get("hits", 0) or 0),
+        "simulator": _is_simulator(email),
+    }
+
+
+def collect_app_stores(errors: Errors) -> dict:
+    """Every configured application suppression table: a reason breakdown plus
+    the recipient-level complaint rows retained there.
+
+    These are app-owned tables (one per sending project), so a complaint here is
+    attributed to the project that handled the feedback — the detail a
+    config-set CloudWatch metric cannot give for sends that carried no config
+    set.
+    """
+    counts: list[dict] = []
+    records: list[dict] = []
     if not CFG.suppression_tables:
-        return []
+        return {"counts": counts, "records": records}
     res = boto3.Session(profile_name=PROFILE or None).resource("dynamodb", region_name=REGION)
-    rows = []
     for table_name in CFG.suppression_tables:
         label = f"{table_name} (reason=complaint)"
         try:
             table = res.Table(table_name)
-            items = _scan_all(table, projection="reason,email")
-            total = len(items)
-            complaints = sum(1 for i in items if str(i.get("reason", "")).lower() == "complaint")
+            items = _scan_all(table)
             breakdown: dict[str, int] = {}
+            complaints = 0
             for i in items:
-                breakdown[str(i.get("reason"))] = breakdown.get(str(i.get("reason")), 0) + 1
-            rows.append(
+                reason = str(i.get("reason", ""))
+                breakdown[reason] = breakdown.get(reason, 0) + 1
+                if reason.lower() == "complaint":
+                    complaints += 1
+                    records.append(_suppression_record(i, table_name))
+            counts.append(
                 {
                     "table": table_name,
                     "label": label,
-                    "total": total,
+                    "total": len(items),
                     "complaints": complaints,
                     "breakdown": breakdown,
                 }
             )
         except (ClientError, BotoCoreError) as e:
             errors.add(f"suppression:{table_name}", e)
-            rows.append({"table": table_name, "label": label, "total": None, "complaints": None})
-    return rows
+            counts.append({"table": table_name, "label": label, "total": None, "complaints": None})
+    return {"counts": counts, "records": records}
+
+
+def collect_ledger(errors: Errors) -> dict:
+    """Read the self-owned feedback ledger, if one is configured.
+
+    The ledger (written by infra/ledger-stack.yaml's ingest Lambda) is the
+    durable, attributed source of truth once deployed. Absent a table, or on a
+    read error, this degrades to ``configured`` with no records so the rest of
+    the report still renders from CloudWatch and the application stores.
+    """
+    if not CFG.ledger_table:
+        return {"configured": False, "table": None, "records": [], "oldest": None, "newest": None}
+    empty = {"configured": True, "table": CFG.ledger_table, "records": [], "oldest": None, "newest": None}
+    res = boto3.Session(profile_name=PROFILE or None).resource("dynamodb", region_name=REGION)
+    try:
+        items = _scan_all(res.Table(CFG.ledger_table))
+    except (ClientError, BotoCoreError) as e:
+        errors.add("ledger", e)
+        return {**empty, "error": True}
+
+    records = []
+    for it in items:
+        records.append(
+            {
+                "email": it.get("recipient", ""),
+                "store": CFG.ledger_table,
+                "detail": it.get("feedback_type", ""),
+                "source": it.get("source", ""),
+                "first_seen": _iso(it.get("ts")),
+                "last_seen": _iso(it.get("ts")),
+                "hits": 1,
+                "simulator": bool(it.get("simulator")),
+                "event_type": it.get("event_type", ""),
+                "sending_identity": it.get("sending_identity", ""),
+                "config_set": it.get("config_set", ""),
+                # The stored key is the SHA-256 of the real address; the report
+                # keeps it so the ledger row can be matched against a full-address
+                # application-store row (see ``_identity_hash``).
+                "recipient_hash": it.get("recipient_hash", ""),
+            }
+        )
+    records.sort(key=lambda r: r.get("last_seen") or "", reverse=True)
+    stamps = [r["last_seen"] for r in records if r.get("last_seen")]
+    return {
+        "configured": True,
+        "table": CFG.ledger_table,
+        "records": records,
+        "oldest": min(stamps) if stamps else None,
+        "newest": max(stamps) if stamps else None,
+    }
 
 
 def collect_suppression_list(errors: Errors) -> dict | None:
@@ -615,6 +763,50 @@ def collect_identities(errors: Errors) -> dict:
     }
 
 
+def collect_identity_feedback(errors: Errors) -> list[dict]:
+    """SES identities with identity-level Bounce/Complaint notification topics.
+
+    Feedback routing is not only a configuration-set concern: an identity can
+    have its own Bounce/Complaint topic (``SetIdentityNotificationTopic``),
+    which delivers events for sends that carried *no* configuration set. That is
+    why an account-level complaint can appear with no per-config-set metric.
+    """
+    ses = _client("ses")
+    sesv2 = _client("sesv2")
+    names, token = [], None
+    while True:
+        kw = {"PageSize": 100}
+        if token:
+            kw["NextToken"] = token
+        page = sesv2.list_email_identities(**kw)
+        names.extend(i["IdentityName"] for i in page.get("EmailIdentities", []))
+        token = page.get("NextToken")
+        if not token:
+            break
+    out = []
+    for start in range(0, len(names), 100):
+        chunk = names[start : start + 100]
+        try:
+            r = ses.get_identity_notification_attributes(Identities=chunk)
+        except (ClientError, BotoCoreError) as e:
+            errors.add("identity_feedback", e)
+            continue
+        for ident, attrs in r.get("NotificationAttributes", {}).items():
+            bounce = attrs.get("BounceTopic")
+            complaint = attrs.get("ComplaintTopic")
+            if bounce or complaint:
+                out.append(
+                    {
+                        "identity": ident,
+                        "bounce_topic": bounce,
+                        "complaint_topic": complaint,
+                        "forwarding_enabled": bool(attrs.get("ForwardingEnabled")),
+                    }
+                )
+    out.sort(key=lambda x: x["identity"])
+    return out
+
+
 def collect_sns(errors: Errors) -> list[dict]:
     sns = _client("sns")
     topics = sns.list_topics().get("Topics", [])
@@ -663,27 +855,39 @@ def collect_all() -> dict:
         f_metrics = ex.submit(guard, "metrics", collect_metrics, {})
         f_cscomp = ex.submit(guard, "config_set_complaints", collect_config_set_complaints, [])
         f_complainants = ex.submit(guard, "complainants", collect_complainants, [])
-        f_supp = ex.submit(guard, "suppression_counts", collect_suppression_counts, [])
+        f_appstores = ex.submit(guard, "app_stores", collect_app_stores, {"counts": [], "records": []})
         f_unattr = ex.submit(guard, "unattributed", collect_unattributed, {"log_groups": [], "rows": []})
         f_configsets = ex.submit(guard, "config_sets", collect_config_sets, [])
         f_identities = ex.submit(guard, "identities", collect_identities, {})
+        f_idfb = ex.submit(guard, "identity_feedback", collect_identity_feedback, [])
         f_sns = ex.submit(guard, "sns", collect_sns, [])
         f_queue = ex.submit(guard, "complaint_queue", collect_complaint_queue, None)
         f_supplist = ex.submit(guard, "suppression_list", collect_suppression_list, None)
         f_cssends = ex.submit(guard, "config_set_sends", collect_config_set_sends, {})
+        f_ledger = ex.submit(
+            guard,
+            "ledger",
+            collect_ledger,
+            {"configured": False, "table": None, "records": [], "oldest": None, "newest": None},
+        )
 
         posture = f_posture.result()
         metrics = f_metrics.result()
         cs_complaints = f_cscomp.result()
         complainants = f_complainants.result()
-        suppression = f_supp.result()
+        app_stores = f_appstores.result()
         unattributed_raw = f_unattr.result()
         config_sets = f_configsets.result()
         identities = f_identities.result()
+        identity_feedback = f_idfb.result()
         sns_topics = f_sns.result()
         queue = f_queue.result()
         suppression_list = f_supplist.result()
         cs_sends = f_cssends.result()
+        ledger = f_ledger.result()
+
+    suppression = app_stores.get("counts", [])
+    suppression_records = app_stores.get("records", [])
 
     unattributed = unattributed_raw.get("rows", [])
     log_groups = unattributed_raw.get("log_groups", [])
@@ -709,6 +913,45 @@ def collect_all() -> dict:
 
     complaint_events = {c["config_set"]: c["events"] for c in cs_complaints}
     suppression_coverage = build_suppression_coverage(config_sets, cs_sends, complaint_events)
+
+    # A single recipient-level view of every complaint an application store has
+    # retained, so the account-wide CloudWatch count can be attributed to a
+    # project (and to test artefacts vs. real complainants). When the self-owned
+    # ledger is deployed it is the primary, deduped source; store rows are kept
+    # for anything it does not cover yet.
+    ledger_records = ledger.get("records", [])
+    store_records = list(suppression_records)
+    for c in complainants:
+        store_records.append(
+            {
+                "email": c["email"],
+                "store": CFG.complaint_table,
+                "detail": c.get("arf_provider", ""),
+                "source": "app account",
+                "first_seen": c.get("recorded_at"),
+                "last_seen": c.get("recorded_at"),
+                "hits": None,
+                "simulator": _is_simulator(c.get("email", "")),
+            }
+        )
+
+    # One row per complainant per day. Ledger rows are authoritative; store rows
+    # fill only the complainants the ledger did not capture (see
+    # ``merge_complaint_records`` for why the address string alone cannot be the
+    # join key once the ledger redacts addresses).
+    complaint_records, kept_ledger, kept_store = merge_complaint_records(
+        ledger_records, store_records
+    )
+    simulator_records = sum(1 for r in complaint_records if r["simulator"])
+    attribution = {
+        "cloudwatch_recorded": metrics.get("total_complaints"),
+        "records": len(complaint_records),
+        "real_records": len(complaint_records) - simulator_records,
+        "simulator_records": simulator_records,
+        "ledger_records": len(kept_ledger),
+        "store_records": len(kept_store),
+        "latest_record": complaint_records[0]["last_seen"] if complaint_records else None,
+    }
 
     finish_reason_rows = []
     if CFG.complaint_table:
@@ -758,11 +1001,15 @@ def collect_all() -> dict:
         "metrics": metrics,
         "config_set_complaints": cs_complaints,
         "complainants": complainants,
+        "complaint_records": complaint_records,
+        "attribution": attribution,
+        "ledger": ledger,
         "unattributed": unattributed,
         "log_groups": log_groups,
         "stores": finish_reason_rows,
         "config_sets": config_sets,
         "identities": identities,
+        "identity_feedback": identity_feedback,
         "sns_topics": sns_topics,
         "complaint_queue": queue,
         "suppression_list": suppression_list,
