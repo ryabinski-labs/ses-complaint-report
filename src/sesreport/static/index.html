@@ -11,7 +11,7 @@
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root { --bg:#0f1319; --card:#171d26; --card2:#1d2530; --ink:#e6ebf2; --mut:#8a93a3; --line:#2a3442;
-  --acc:#39a0ff; --red:#e0533d; --ok:#3ecf8e; --warn:#e0a13d;
+  --acc:#39a0ff; --red:#e0533d; --redtx:#e76a50; --ok:#3ecf8e; --warn:#e0a13d;
   --display:"Fraunces",Georgia,"Times New Roman",serif;
   --sans:"IBM Plex Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
   --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
@@ -33,7 +33,7 @@ h2 .ic { color:var(--acc); opacity:.9; }
 .sub { color:var(--mut); font-size:13px; }
 .tag { display:inline-block; padding:2px 9px; border-radius:20px; font-size:11px; font-weight:600; }
 .tag.ok { background:rgba(62,207,142,.15); color:var(--ok); }
-.tag.bad { background:rgba(224,83,61,.15); color:var(--red); }
+.tag.bad { background:rgba(224,83,61,.15); color:var(--redtx); }
 .tag.warn { background:rgba(224,161,61,.15); color:var(--warn); }
 .dot { display:inline-block; width:7px; height:7px; border-radius:50%; background:var(--ok); vertical-align:middle; margin-right:6px; box-shadow:0 0 0 0 rgba(62,207,142,.5); animation:pulse 2.4s infinite; }
 @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(62,207,142,.5);} 70%{box-shadow:0 0 0 7px rgba(62,207,142,0);} 100%{box-shadow:0 0 0 0 rgba(62,207,142,0);} }
@@ -45,7 +45,7 @@ h2 .ic { color:var(--acc); opacity:.9; }
 .card .n { font-family:var(--mono); font-weight:500; font-size:25px; letter-spacing:-.6px; font-variant-numeric:tabular-nums; }
 .card .corner { position:absolute; top:12px; right:13px; color:var(--mut); opacity:.45; width:15px; height:15px; }
 .card:hover .corner { opacity:.8; color:var(--acc); }
-.card .n.ok{color:var(--ok)} .card .n.bad{color:var(--red)} .card .n.warn{color:var(--warn)}
+.card .n.ok{color:var(--ok)} .card .n.bad{color:var(--redtx)} .card .n.warn{color:var(--warn)}
 .card .l { color:var(--mut); font-size:12px; margin-top:3px; }
 .card .x { font-size:11px; color:var(--mut); margin-top:7px; }
 table { width:100%; border-collapse:collapse; font-size:13px; margin:6px 0 4px; }
@@ -59,14 +59,15 @@ tr:hover td { background:var(--card2); }
 .mono { font-family:var(--mono); font-size:12px; }
 .num,.card .n,td.num { font-variant-numeric:tabular-nums; }
 .muted { color:var(--mut); }
-.ok { color:var(--ok); } .bad { color:var(--red); } .warn { color:var(--warn); }
+.ok { color:var(--ok); } .bad { color:var(--redtx); } .warn { color:var(--warn); }
 .chart { width:100%; display:block; background:var(--card); border:1px solid var(--line); border-radius:12px; margin:8px 0; }
 .box { position:relative; background:var(--card); border:1px solid var(--line); border-radius:13px; padding:16px 18px; margin:14px 0; }
 .box h3 { display:flex; align-items:center; gap:8px; }
 .box h2.boxh { display:flex; align-items:center; gap:8px; margin:0 0 10px; padding:0; border:0; font-size:15px; }
 .note { border-left:3px solid var(--warn); }
 .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
-@media(max-width:820px){ .grid2{grid-template-columns:1fr;} }
+.grid2 > * { min-width:0; }
+@media(max-width:820px){ .grid2{grid-template-columns:1fr;} th{white-space:normal;} td,th{overflow-wrap:anywhere;} .tablewrap td,.tablewrap th{overflow-wrap:normal;} }
 code { font-family:var(--mono); background:var(--card2); padding:1px 6px; border-radius:5px; font-size:12px; }
 a { color:var(--acc); }
 footer { margin-top:52px; color:var(--mut); font-size:12px; border-top:1px solid var(--line); padding-top:14px; }
@@ -82,7 +83,7 @@ button:disabled { opacity:.5; cursor:default; }
 button:focus-visible, .search:focus-visible, select:focus-visible { outline:none; box-shadow:var(--ring); }
 button.ghost { background:var(--card2); color:var(--ink); border:1px solid var(--line); }
 button.mini { padding:5px 10px; font-size:12px; font-weight:500; }
-select.search { cursor:pointer; }
+select.search { cursor:pointer; max-width:100%; }
 .controls .pill { white-space:nowrap; }
 .seg { display:inline-flex; border:1px solid var(--line); border-radius:9px; overflow:hidden; }
 .seg button { background:var(--card); color:var(--mut); border-radius:0; padding:6px 11px; font-weight:600; }
@@ -90,9 +91,38 @@ select.search { cursor:pointer; }
 .pill { display:inline-flex; align-items:center; gap:6px; font-size:11px; color:var(--mut); border:1px solid var(--line); border-radius:20px; padding:4px 10px; }
 .search { background:var(--card2); border:1px solid var(--line); color:var(--ink); border-radius:8px; padding:7px 10px; font-size:13px; width:230px; font-family:var(--sans); transition:border-color .15s ease; }
 .search::placeholder { color:var(--mut); }
-.tablewrap { max-height:430px; overflow:auto; border:1px solid var(--line); border-radius:10px; }
+.tablebox { position:relative; }
+.tablebox .scrollfade { position:absolute; top:1px; bottom:1px; right:11px; width:34px; border-radius:0 10px 10px 0; pointer-events:none; opacity:0; transition:opacity .18s ease;
+  background:linear-gradient(to left, var(--bg), rgba(15,19,25,0)); }
+.tablebox.more-right .scrollfade { opacity:1; }
+.tablewrap { max-height:430px; overflow:auto; border:1px solid var(--line); border-radius:10px; background:var(--bg); }
 .tablewrap table { margin:0; }
-.tablewrap thead th { position:sticky; top:0; background:var(--card); z-index:1; }
+.tablewrap thead th { position:sticky; top:0; background:var(--card); z-index:2; }
+.tablewrap th:first-child, .tablewrap td:first-child { position:sticky; left:0; background:var(--bg); z-index:1; }
+.tablewrap thead th:first-child { background:var(--card); z-index:3; }
+.tablewrap tr:hover td:first-child { background:var(--card2); }
+.tablewrap.scrolled-x th:first-child, .tablewrap.scrolled-x td:first-child { box-shadow:inset -1px 0 0 var(--line), 10px 0 14px -8px rgba(0,0,0,.9); }
+.cell-sub { color:var(--mut); font-size:11.5px; margin-top:2px; }
+.thbtn { width:100%; display:inline-flex; align-items:center; gap:4px; justify-content:flex-start; background:none; border:0; margin:0; padding:7px 9px; font:inherit; color:inherit; letter-spacing:inherit; text-transform:inherit; cursor:pointer; text-align:left; }
+.thbtn:hover { filter:none; }
+.thbtn:active { transform:none; }
+.thbtn:focus-visible { outline:2px solid var(--acc); outline-offset:-3px; border-radius:6px; }
+th.sortable { padding:0; }
+.selsort { display:none; }
+@media(max-width:640px){
+  .controls .selsort { display:block; }
+  .tablewrap { max-height:none !important; overflow:visible; border:0; background:transparent; }
+  .tablewrap table { display:block; width:100%; }
+  .tablewrap thead { display:none; }
+  .tablewrap tbody { display:block; }
+  .tablewrap tr { display:block; border:1px solid var(--line); border-radius:10px; background:var(--card); margin:9px 0; padding:5px 2px 7px; }
+  .tablewrap td { display:block; padding:4px 12px; border:0; overflow-wrap:anywhere; }
+  .tablewrap td:first-child { position:static; background:none; padding-bottom:6px; border-bottom:1px solid var(--line); margin-bottom:4px; }
+  .tablewrap td::before { content:attr(data-label); display:block; color:var(--mut); font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:.5px; margin-bottom:1px; }
+  .tablewrap td:first-child::before { content:none; }
+  .tablewrap tr:hover td, .tablewrap tr:hover td:first-child { background:none; }
+  .tablebox .scrollfade { display:none; }
+}
 .toast { position:fixed; right:20px; bottom:20px; background:var(--card2); border:1px solid var(--line); color:var(--ink); padding:12px 16px; border-radius:11px; font-size:13px; box-shadow:0 12px 40px rgba(0,0,0,.5); opacity:0; transform:translateY(10px); transition:.25s; pointer-events:none; max-width:360px; }
 .toast.show { opacity:1; transform:none; }
 .spinner { width:13px; height:13px; border:2px solid rgba(255,255,255,.35); border-top-color:#fff; border-radius:50%; display:inline-block; animation:spin .7s linear infinite; }
@@ -229,7 +259,7 @@ function exportJSON() {
 function toCsv(rows, columns) {
   const esc2 = v => { const s = String(v ?? ''); return /[",\n]/.test(s) ? '"'+s.replace(/"/g,'""')+'"' : s; };
   const head = columns.map(c=>esc2(c.title)).join(',');
-  const body = rows.map(r=>columns.map(c=>esc2(r[c.key])).join(',')).join('\n');
+  const body = rows.map(r=>columns.map(c=>esc2(c.value ? c.value(r) : r[c.key])).join(',')).join('\n');
   return head + '\n' + body;
 }
 function buildMarkdown() {
@@ -315,7 +345,7 @@ function lineChart(series, {height=210, color='#39a0ff', line=0.001, lineLabel='
 }
 
 /* ------------------------------------------------------------------ tables */
-function makeTable({columns, rows, search=true, height=null, filters=[], csv=null}) {
+function makeTable({columns, rows, search=true, height=null, filters=[], csv=null, csvColumns=null}) {
   const root = el('div');
   let q = '', sortKey = null, sortDir = 1, lastData = rows;
   const fstate = {};
@@ -331,32 +361,61 @@ function makeTable({columns, rows, search=true, height=null, filters=[], csv=nul
     for (const v of vals) sel.append(el('option',{value:v}, v));
     bar.append(sel);
   }
+  const sortSel = el('select', {class:'search selsort', style:'width:auto', 'aria-label':'Sort table', onchange:e=>{
+    sortKey = e.target.value || null; sortDir = 1; draw();
+  }});
+  sortSel.append(el('option', {value:''}, 'Sort: default'));
+  for (const c of columns) sortSel.append(el('option', {value:c.key}, `Sort by ${c.title}`));
+  const dirBtn = el('button', {class:'ghost mini selsort', type:'button', 'aria-label':'Toggle sort direction', disabled:true, onclick:()=>{ if(sortKey){ sortDir*=-1; draw(); } }}, '▲');
+  bar.append(sortSel, dirBtn);
   const csvBtn = el('button', {class:'ghost mini', type:'button', onclick:()=>{
     const name = (csv || columns[0].title).toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'');
-    download(`ses-${name}.csv`, toCsv(lastData, columns.filter(c=>c.key!=='fix')), 'text/csv');
+    download(`ses-${name}.csv`, toCsv(lastData, csvColumns || columns.filter(c=>c.key!=='fix')), 'text/csv');
   }}, '⤓ CSV');
   bar.append(csvBtn);
+  const box = el('div', {class:'tablebox'});
   const wrap = el('div', {class:'tablewrap', tabindex:'0', role:'group', 'aria-label':'Scrollable table', style: height?`max-height:${height}px`:''});
+  const fade = el('div', {class:'scrollfade', 'aria-hidden':'true'});
   const tbl = el('table');
   const thead = el('thead'), trh = el('tr');
   for (const c of columns) {
     const th = el('th', {class:'sortable'});
-    th.innerHTML = esc(c.title) + ' <span class="arrow"></span>';
-    th.addEventListener('click', ()=>{ if(sortKey===c.key) sortDir*=-1; else {sortKey=c.key; sortDir=1;} draw(); });
+    const btn = el('button', {type:'button', class:'thbtn', 'aria-label':`Sort by ${c.title}`, html:`${esc(c.title)} <span class="arrow"></span>`});
+    if (c.hint) btn.title = c.hint;
+    btn.addEventListener('click', ()=>{ if(sortKey===c.key) sortDir*=-1; else {sortKey=c.key; sortDir=1;} draw(); });
+    th.append(btn);
     c._th = th; trh.append(th);
   }
   thead.append(trh); tbl.append(thead);
   const tbody = el('tbody'); tbl.append(tbody);
-  wrap.append(tbl); root.append(bar, wrap);
+  wrap.append(tbl); box.append(wrap, fade); root.append(bar, box);
   const count = el('div',{class:'sub',style:'margin-top:6px'});
+
+  function syncScroll() {
+    const max = wrap.scrollWidth - wrap.clientWidth;
+    const scrollable = max > 1;
+    const atEnd = wrap.scrollLeft >= max - 1;
+    wrap.classList.toggle('scrolled-x', scrollable && wrap.scrollLeft > 1);
+    box.classList.toggle('more-right', scrollable && !atEnd);
+    wrap.tabIndex = scrollable ? 0 : -1;
+    wrap.setAttribute('aria-label', scrollable ? 'Scrollable table — use arrow keys to scroll' : 'Table');
+    fade.style.right = Math.max(1, (wrap.offsetWidth - wrap.clientWidth) - 1) + 'px';
+  }
+  wrap.addEventListener('scroll', syncScroll, {passive:true});
+  if (window.ResizeObserver) new ResizeObserver(syncScroll).observe(wrap);
+  document.fonts?.ready?.then(syncScroll);
 
   function draw() {
     let data = rows.slice();
-    if (q) data = data.filter(r => columns.some(c => String(c.render ? c.render(r) : r[c.key] ?? '').toLowerCase().includes(q)));
+    if (q) data = data.filter(r => columns.some(c => {
+      const v = c.searchValue ? c.searchValue(r) : (c.render ? c.render(r) : (r[c.key] ?? ''));
+      return String(v).replace(/<[^>]*>/g, ' ').toLowerCase().includes(q);
+    }));
     for (const f of filters) if (fstate[f.key] !== '' && fstate[f.key] !== undefined) data = data.filter(r => String(f.value(r)) === fstate[f.key]);
     if (sortKey) {
       const c = columns.find(c=>c.key===sortKey);
-      data.sort((a,b)=>{ let x=a[sortKey], y=b[sortKey];
+      data.sort((a,b)=>{ let x = c && c.sortValue ? c.sortValue(a) : a[sortKey];
+        let y = c && c.sortValue ? c.sortValue(b) : b[sortKey];
         if (c && c.type==='num') { x=Number(x)||0; y=Number(y)||0; return (x-y)*sortDir; }
         return String(x??'').localeCompare(String(y??''))*sortDir; });
     }
@@ -365,15 +424,22 @@ function makeTable({columns, rows, search=true, height=null, filters=[], csv=nul
       const tr = el('tr');
       for (const c of columns) {
         const td = el('td', {class:c.cls||''});
+        td.dataset.label = c.title;
         const v = c.render ? c.render(r) : (r[c.key] ?? '');
         if (v && v.nodeType) td.append(v); else td.innerHTML = v===null||v===undefined?'':String(v);
         tr.append(td);
       }
       tbody.append(tr);
     }
-    columns.forEach(c=>{ const a=c._th.querySelector('.arrow'); a.textContent = sortKey===c.key ? (sortDir>0?'▲':'▼') : ''; });
+    columns.forEach(c=>{ const a=c._th.querySelector('.arrow'); a.textContent = sortKey===c.key ? (sortDir>0?'▲':'▼') : '';
+      if (sortKey===c.key) c._th.setAttribute('aria-sort', sortDir>0?'ascending':'descending'); else c._th.removeAttribute('aria-sort'); });
+    sortSel.value = sortKey || '';
+    dirBtn.disabled = !sortKey;
+    dirBtn.title = sortKey ? `Sort direction: ${sortDir > 0 ? 'ascending' : 'descending'}` : 'Pick a sort column first';
+    dirBtn.textContent = sortDir > 0 ? '▲' : '▼';
     lastData = data;
     count.textContent = `${data.length} row${data.length===1?'':'s'}${data.length!==rows.length?` (of ${rows.length})`:''}`;
+    syncScroll();
   }
   root.append(count);
   draw();
@@ -555,7 +621,7 @@ function renderComplainants() {
   return `${h2('users','4 · Individual complaint records')}
     ${renderAttribution()}
     <h3>4.2 · Recipient-level complaint records (all application stores)</h3>
-    <p class="sub">Every complaint each configured store retained: address, store, feedback detail, source, and how many times it was suppressed. <span class="tag warn">test</span> marks AWS mailbox-simulator addresses.</p>
+    <p class="sub">Every complaint each configured store retained: recipient address, store &amp; source, feedback detail, sending identity, when it was seen, and how many times it was suppressed. <span class="tag warn">test</span> marks AWS mailbox-simulator addresses.</p>
     <div id="recordTable"></div>
     <h3>4.3 · Recipients flagged as complainants (application accounts)</h3>
     <p class="sub">Every complaint whose recipient matched an application account row. The diagnostic string is the ARF feedback provider reported by the mailbox provider.</p>
@@ -677,17 +743,36 @@ function render() {
   const records = state.model.complaint_records || [];
   document.getElementById('recordTable').append(makeTable({
     columns:[
-      {key:'email',title:'Recipient address',cls:'mono'},
-      {key:'store',title:'Store'},
-      {key:'event_type',title:'Event',render:r=>r.event_type||'<span class="muted">—</span>'},
-      {key:'sending_identity',title:'Sending identity',render:r=>r.sending_identity||'<span class="muted">—</span>'},
-      {key:'detail',title:'Feedback detail',render:r=>r.detail||'<span class="muted">—</span>'},
-      {key:'source',title:'Source',render:r=>r.source||'<span class="muted">—</span>'},
-      {key:'first_seen',title:'First seen',render:r=>r.first_seen?fmtTs(r.first_seen):'—',type:'num'},
-      {key:'last_seen',title:'Last seen',render:r=>r.last_seen?fmtTs(r.last_seen):'—',type:'num'},
-      {key:'hits',title:'Hits',type:'num',render:r=>(r.hits===null||r.hits===undefined)?'<span class="muted">—</span>':fmtInt(r.hits)},
-      {key:'simulator',title:'Test?',render:r=>r.simulator?'<span class="tag warn">test</span>':'<span class="muted">—</span>'},
-    ], rows:records, height:320,
+      {key:'email',title:'Recipient address',cls:'mono',hint:'The address that complained; “test” marks an AWS mailbox-simulator address',
+        render:r=>esc(r.email)+(r.simulator?' <span class="tag warn" title="AWS SES mailbox-simulator address — synthetic test feedback, not a real subscriber">test</span>':''),
+        searchValue:r=>`${r.email||''} ${r.simulator?'test':''}`},
+      {key:'store',title:'Store',hint:'Where the record is retained, and which pipeline reported it',
+        render:r=>`${esc(r.store||'—')}${r.source?`<div class="cell-sub">via ${esc(r.source)}</div>`:''}`,
+        searchValue:r=>`${r.store||''} ${r.source||''}`},
+      {key:'feedback',title:'Feedback',hint:'ARF feedback type / diagnostic, and the SES event type where recorded',
+        render:r=>`${r.detail?esc(r.detail):'<span class="muted">—</span>'}${r.event_type?`<div class="cell-sub">${esc(r.event_type)} event</div>`:''}`,
+        sortValue:r=>r.detail||'',
+        searchValue:r=>`${r.event_type||''} ${r.detail||''}`},
+      {key:'sending_identity',title:'Sending identity',
+        render:r=>r.sending_identity?`<span class="mono">${esc(r.sending_identity)}</span>`:'<span class="muted">—</span>'},
+      {key:'seen',title:'Seen',hint:'First and last time this record was seen by its store',
+        sortValue:r=>r.last_seen||r.first_seen||'',
+        render:r=>{ const f=r.first_seen?fmtTs(r.first_seen):null, l=r.last_seen?fmtTs(r.last_seen):null;
+          if(!f&&!l) return '<span class="muted">—</span>';
+          if(!l||f===l) return `<span title="first and last seen at the same time">${esc(f||l)}</span>`;
+          return `${esc(f)}<div class="cell-sub">→ last ${esc(l)}</div>`; },
+        searchValue:r=>`${fmtTs(r.first_seen)} ${fmtTs(r.last_seen)}`},
+      {key:'hits',title:'Hits',type:'num',hint:'How many times this address was suppressed',
+        render:r=>(r.hits===null||r.hits===undefined)?'<span class="muted">—</span>':fmtInt(r.hits)},
+    ], rows:records,
+    csv:'recipient-records',
+    csvColumns:[
+      {key:'email',title:'Recipient address'},{key:'simulator',title:'Mailbox simulator',value:r=>r.simulator?'yes':''},
+      {key:'store',title:'Store'},{key:'source',title:'Source'},
+      {key:'sending_identity',title:'Sending identity'},{key:'event_type',title:'Event'},
+      {key:'detail',title:'Feedback detail'},
+      {key:'first_seen',title:'First seen'},{key:'last_seen',title:'Last seen'},{key:'hits',title:'Hits'},
+    ],
     filters:[
       {key:'store',label:'All stores',value:r=>r.store},
       {key:'simulator',label:'All records',value:r=>r.simulator?'mailbox-simulator (test)':'real complainants'},

@@ -8,6 +8,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **UI end-to-end tests** (`tests/ui`, Playwright/Chromium): boot the app in
+  demo mode and verify the report tables' layout contracts — no horizontal
+  overflow at desktop widths, a pinned address column with edge fade and
+  keyboard scrolling when narrow, labelled cards on phone widths, keyboard
+  sorting with `aria-sort`, and CSV export completeness. Wired into PR
+  validation as a separate `ui-tests` job.
 - CodeQL now also runs on pull requests, so code-scanning results attach to PR
   head SHAs (which the OpenSSF Scorecard SAST check measures). The audit gate
   allow-lists exactly this workflow's `security-events: write`.
@@ -31,6 +37,28 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Recipient-level complaint table overflow**: the §4.2 table's 10 columns
+  were wider than the report's 1134 px content column, forcing horizontal
+  scrolling even at a 1440 px viewport and hiding the recipient address when
+  scrolled. Related columns now share a row (store + source, ARF diagnostic +
+  event type, first/last seen) with no data loss, so the table fits down to
+  ~1024 px. Where a narrow viewport still needs to scroll, the address column
+  stays pinned with a scroll shadow and edge fade, and below 640 px each row
+  becomes a labelled card. Sortable headers are now real buttons with
+  `aria-sort`, so sorting works from the keyboard too.
+- **Phone sorting and region semantics**: below 640 px the tables render as
+  cards and the sortable column headers are hidden, so the toolbar now carries
+  a sort control (column select + direction toggle) in that layout. Table
+  scroll regions only take tab focus and announce themselves as scrollable
+  when they actually overflow.
+- **Alert-text contrast on cards**: `.bad` text (red) measured 4.41:1 against
+  the card background used by the phone card layout — under the WCAG AA 4.5:1
+  minimum. Red text now uses a `--redtx` token that clears AA on the page,
+  card, and hover backgrounds; the decorative `--red` remains for borders and
+  charts.
+- **Mobile page overflow**: raw report tables and filter `<select>` elements
+  sized to their longest option could push the whole page wider than the
+  viewport; both are now contained (no overflow at 375/390/430 px widths).
 - **Attribution double-count**: once the ledger was deployed, a complaint the
   ledger *and* an application store both retained was counted twice, because the
   ledger stores a redacted address while a store keeps the full one. The merge
