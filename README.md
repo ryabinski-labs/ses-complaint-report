@@ -195,6 +195,7 @@ uv sync
 uv run python -m sesreport.collect     # run the collector and print JSON
 uv run ruff check . && uv run pytest    # lint + smoke tests (no AWS calls)
 uv run sesreport                       # start the server
+cd tests/ui && npm ci && npx playwright test   # browser E2E (demo mode, no AWS calls)
 ```
 
 ## Support
