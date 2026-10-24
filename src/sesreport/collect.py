@@ -550,7 +550,7 @@ def read_ledger_aggregates(table, cache_path: Path | None, today: dt.date, days:
         try:
             write_private(cache_path, json.dumps({"days": cache}, sort_keys=True))
         except OSError:
-            pass
+            pass  # the cache is an optimization; a read-only disk must not fail the run
     return [{"day": d, **r} for d, rows in sorted(cache.items()) for r in rows]
 
 
@@ -1466,7 +1466,5 @@ def build_deliverability(*, ledger, aggregates, identities, coverage, config_set
 
 
 if __name__ == "__main__":
-    import json
-
     logging.basicConfig(level=logging.INFO)
     print(json.dumps(collect_all(), indent=2, default=str))
