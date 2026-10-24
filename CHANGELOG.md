@@ -47,6 +47,31 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Security (from QA of the redesign):**
+  - Table cells now render API values as text, so values such as a crafted recipient address or ARF string can no longer inject markup or script into the page. Attribute values and date fallbacks are escaped too.
+  - CSV exports prefix cells that start with `= + - @` so spreadsheets keep them as text.
+  - The copied AWS CLI fix command shell-quotes the config-set name.
+  - `POST /api/refresh` now requires a same-origin `X-Requested-With` header and rejects cross-site `Origin` / `Sec-Fetch-Site`, so other websites can no longer start billed collection runs.
+  - The server answers only loopback Host headers plus `SESREPORT_ALLOWED_HOSTS` (a DNS-rebinding guard).
+- **Demo data isolation**: demo mode now writes to `data/demo/`. Before this it overwrote the live `latest.json` and pushed real snapshots out of the capped history.
+- **No horizontal scrolling**:
+  - Tables wrap long values instead of scrolling sideways.
+  - The coverage grid turns into cards on narrow screens.
+  - The section nav wraps onto more lines.
+  - Charts never draw wider than their card, including at 320px.
+  - The complainant and unattributed tables are stacked full width.
+- **Visual and accessibility fixes**:
+  - Printing from a dark theme now uses light colours.
+  - Focus rings reach 3:1 contrast.
+  - Light-mode status text meets 4.5:1.
+  - The pipeline list has proper list semantics, and keyboard chart readings go to a live region.
+  - The threshold rail and the latest-rate label no longer clip.
+  - Number headers align with their numbers.
+  - Short ranges show weekly ticks.
+  - Overlapping timeline dots merge into one labelled cluster.
+  - The `NaN days ago` text is gone when there are no complaints.
+  - Store breakdowns read `bounce: 42` instead of a Python dict.
+
 - **Recipient-level complaint table overflow**: the §4.2 table's 10 columns
   were wider than the report's 1134 px content column, forcing horizontal
   scrolling even at a 1440 px viewport and hiding the recipient address when

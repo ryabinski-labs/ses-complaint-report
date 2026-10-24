@@ -167,6 +167,8 @@ Copy `.env.example` to `.env` and edit:
 | `SESREPORT_REDACT_EMAILS` | Mask recipient addresses in the API payload |
 | `SESREPORT_DEMO` | Serve synthetic data instead of calling AWS |
 | `SESREPORT_HOST`, `SESREPORT_PORT` | Local bind address (default `127.0.0.1:8787`) |
+| `SESREPORT_ALLOWED_HOSTS` | Extra `Host` names to serve besides loopback; other hosts get 400 (DNS-rebinding guard) |
+| `SESREPORT_DATA_DIR` | Cache and history directory (default `src/sesreport/data`, or `src/sesreport/data/demo` in demo mode) |
 | `SESREPORT_REFRESH_SECONDS` | Background refresh interval (default 3600) |
 | `SESREPORT_HISTORY_MAX` | Refresh snapshots kept for change tracking (default 500) |
 

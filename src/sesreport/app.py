@@ -13,12 +13,15 @@ import threading
 import time
 from contextlib import asynccontextmanager
 from pathlib import Path
+from urllib.parse import urlsplit
 
 import uvicorn
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from .collect import collect_all
+from .config import _split
 from .config import load as load_config
 from .demo import demo_model
 
@@ -27,13 +30,48 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name
 
 HERE = Path(__file__).resolve().parent
 CFG = load_config()
-DATA_DIR = Path(os.environ.get("SESREPORT_DATA_DIR", HERE / "data"))
+
+
+def data_dir(env: dict, demo: bool) -> Path:
+    """Where the cache and history live. Demo mode never shares the live directory,
+    so synthetic snapshots cannot overwrite or evict real ones."""
+    if env.get("SESREPORT_DATA_DIR"):
+        return Path(env["SESREPORT_DATA_DIR"])
+    return HERE / "data" / "demo" if demo else HERE / "data"
+
+
+DATA_DIR = data_dir(os.environ, CFG.demo)
 CACHE_FILE = DATA_DIR / "latest.json"
 HISTORY_FILE = DATA_DIR / "history.jsonl"
 HISTORY_MAX = int(os.environ.get("SESREPORT_HISTORY_MAX", 500))
 REFRESH_INTERVAL_S = CFG.refresh_seconds
 HOST = CFG.host
 PORT = CFG.port
+REFRESH_HEADER = "x-requested-with"
+REFRESH_HEADER_VALUE = "sesreport"
+
+
+def allowed_hosts(bind_host: str, extra: str = "") -> list[str]:
+    """Host headers the server answers to; anything else is refused (DNS-rebinding guard)."""
+    hosts = ["127.0.0.1", "localhost", "::1", "[::1]", *_split(extra)]
+    if bind_host and bind_host not in ("0.0.0.0", "::", "*"):
+        hosts.append(bind_host)
+    return list(dict.fromkeys(hosts))
+
+
+def refresh_allowed(headers) -> bool:
+    """Only same-origin page script may trigger a refresh: it must send the custom
+    header (which a cross-site form or simple request cannot), and any Origin /
+    Sec-Fetch-Site it carries must be same-origin."""
+    if headers.get(REFRESH_HEADER) != REFRESH_HEADER_VALUE:
+        return False
+    site = headers.get("sec-fetch-site")
+    if site and site not in ("same-origin", "none"):
+        return False
+    origin = headers.get("origin")
+    if origin and urlsplit(origin).netloc != headers.get("host"):
+        return False
+    return True
 
 
 def _snapshot(model: dict) -> dict:
@@ -182,6 +220,10 @@ async def _lifespan(_app: FastAPI):
 
 
 app = FastAPI(title="SES Complaint Report", lifespan=_lifespan)
+app.add_middleware(
+    TrustedHostMiddleware,
+    allowed_hosts=allowed_hosts(HOST, os.environ.get("SESREPORT_ALLOWED_HOSTS", "")),
+)
 
 
 @app.get("/")
@@ -212,7 +254,9 @@ def report():
 
 
 @app.post("/api/refresh")
-def refresh():
+def refresh(request: Request):
+    if not refresh_allowed(request.headers):
+        return JSONResponse(status_code=403, content={"status": "forbidden", "detail": "cross-origin refresh refused"})
     with STATE_LOCK:
         if STATE["refreshing"]:
             return {"status": "already-refreshing", **_status_payload()}

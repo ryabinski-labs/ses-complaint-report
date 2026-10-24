@@ -107,7 +107,7 @@ def demo_model(seed: int = 7) -> dict:
             ("transactional", ["BOUNCE", "COMPLAINT", "DELIVERY", "REJECT"]),
             ("marketing", ["BOUNCE", "COMPLAINT"]),
             ("engagement-open", ["OPEN"]),
-            ("legacy", []),
+            ("public-feedbackform", []),
         ]
     ]
 
@@ -170,7 +170,7 @@ def demo_model(seed: int = 7) -> dict:
         "log_groups": ["/aws/lambda/demo-api"],
         "stores": [
             {"store": "DynamoDB accounts (bounce_type=Complaint)", "complaints": 8, "detail": "exact address + ARF provider + timestamp"},
-            {"store": "DynamoDB suppressions (reason=complaint)", "complaints": 0, "detail": "42 total rows — {'bounce': 42}"},
+            {"store": "DynamoDB suppressions (reason=complaint)", "complaints": 0, "detail": "42 total rows — bounce: 42"},
             {"store": "SQS complaint-recovery (retained raw feedback)", "complaints": 0, "detail": "governance-controlled DLQ; bodies not read"},
             {"store": "CloudWatch Logs /aws/lambda/demo-api (7-day retention)", "complaints": 0, "detail": "unattributed feedback events, last 7 days"},
         ],
