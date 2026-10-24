@@ -8,6 +8,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Dashboard redesign** (Ocean Depths theme, light and dark modes with a
+  toggle): a verdict panel with the rolling rate drawn against the alert and
+  AWS review lines; KPI tiles with mini-charts and meters; a severity-ranked
+  "Needs attention" list with copy-paste fixes; the rolling rate and daily
+  complaints on one shared time axis with a keyboard-accessible crosshair; a
+  bar view of attribution; a pipeline diagram and a config-set × event-type
+  coverage grid; and a timeline of when complaints age out.
+  The per-config-set filter no longer shows a scaled, estimated rate. The rate
+  is labelled account-wide, because that is the only rate AWS publishes.
+
 - **UI end-to-end tests** (`tests/ui`, Playwright/Chromium): boot the app in
   demo mode and verify the report tables' layout contracts — no horizontal
   overflow at desktop widths, a pinned address column with edge fade and
