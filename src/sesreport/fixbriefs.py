@@ -79,10 +79,10 @@ def routing_brief(config_set: str, region: str = "", ledger_topics: list[str] | 
                 "COMPLAINT events. A CloudWatch destination only counts them; nothing hears them.",
         resource=f"SES configuration set {config_set_md}", region=region,
         why=why,
-        steps=["Add an SNS event destination on the ledger's feedback topic matching BOUNCE, COMPLAINT and DELIVERY "
-               "(DELIVERY gives the ledger its denominator).",
-               "If the sending app needs the events too, subscribe its handler to the same topic rather than "
-               "creating a second path."],
+        steps=[("Add an SNS event destination on the ledger's feedback topic matching BOUNCE, COMPLAINT and DELIVERY "
+                "(DELIVERY gives the ledger its denominator)."),
+               ("If the sending app needs the events too, subscribe its handler to the same topic rather than "
+                "creating a second path.")],
         commands=[*topic_lines,
                   "aws sesv2 create-configuration-set-event-destination" + _region_flag(region) + " \\",
                   f"  --configuration-set-name {q(config_set)} \\",
@@ -107,8 +107,8 @@ def ledger_gap_brief(config_set: str, feedback_topics: list[str], region: str = 
         resource=f"SES configuration set {config_set_md}", region=region,
         why="The app that owns the topic hears the complaint, but the ledger does not, so this path has no "
             "per-provider rates and its complaints are missing from the recipient-level records.",
-        steps=["Subscribe the ledger ingest Lambda to the set's feedback topic (the ledger stack already grants "
-               "SNS invoke for the whole account).",
+        steps=[("Subscribe the ledger ingest Lambda to the set's feedback topic (the ledger stack already grants "
+                "SNS invoke for the whole account)."),
                "Check the topic's other subscribers tolerate nothing new: the subscription adds a reader, not events."],
         commands=["LEDGER_ARN=$(aws lambda get-function --function-name ses-complaint-report-ledger-ingest"
                   + _region_flag(region) + " --query Configuration.FunctionArn --output text)",
@@ -223,8 +223,8 @@ def identity_unverified_brief(identity: str, status: str, region: str = "") -> s
         resource=f"SES identity {identity_md}", region=region,
         why="This is housekeeping, not a sending risk: SES already refuses mail from an unverified identity. "
             "Authentication checks are skipped for it because none of them can apply.",
-        steps=["If the domain is still yours and should send, publish the DKIM CNAMEs SES asks for and wait for "
-               "re-verification.", "Otherwise delete the identity so it stops appearing here."],
+        steps=[("If the domain is still yours and should send, publish the DKIM CNAMEs SES asks for and wait for "
+                "re-verification."), "Otherwise delete the identity so it stops appearing here."],
         commands=[f"aws sesv2 get-email-identity --email-identity {q(identity)}{_region_flag(region)} "
                   "--query 'DkimAttributes.Tokens'",
                   "# only if the domain is no longer used:",
@@ -246,8 +246,8 @@ def unattributed_sends_brief(identities: list[str], share: dict, region: str = "
         why="Feedback for those messages arrives only as forwarded email (if forwarding is on). It never reaches "
             "a handler or the ledger, so the address is not suppressed by the app and the complaint is missing "
             "from every rate here except SES's own.",
-        steps=["For each identity, set a default configuration set that routes BOUNCE, COMPLAINT and DELIVERY to a "
-               "ledger-subscribed topic. Sends that name a set explicitly are unaffected.",
+        steps=[("For each identity, set a default configuration set that routes BOUNCE, COMPLAINT and DELIVERY to a "
+                "ledger-subscribed topic. Sends that name a set explicitly are unaffected."),
                "Alternatively, point the identity's own Bounce and Complaint notifications at such a topic."],
         commands=["aws sesv2 put-email-identity-configuration-set-attributes" + _region_flag(region) + " \\",
                   f"  --email-identity {q(first)} \\", "  --configuration-set-name CONFIG_SET_WITH_FEEDBACK",
@@ -265,8 +265,8 @@ def sns_pending_brief(topic: str, endpoints: list[str], region: str = "") -> str
                 "They receive nothing until confirmed.",
         resource=f"SNS topic {_n(topic)}", region=region,
         why="A feedback handler that never confirmed its subscription silently misses every complaint.",
-        steps=["Have the endpoint confirm (an https endpoint receives a SubscriptionConfirmation POST; a Lambda "
-               "confirms automatically once it has invoke permission).", "Remove subscriptions nobody owns."],
+        steps=[("Have the endpoint confirm (an https endpoint receives a SubscriptionConfirmation POST; a Lambda "
+                "confirms automatically once it has invoke permission)."), "Remove subscriptions nobody owns."],
         commands=[f"aws sns list-subscriptions-by-topic --topic-arn {q(topic)}{_region_flag(region)}"],
         verify=["No subscription on the topic shows `PendingConfirmation`."],
         rollback=["None: this brief only confirms or removes subscriptions."],
@@ -281,8 +281,8 @@ def dkim_key_brief(identity: str, region: str = "") -> str:
         resource=f"SES identity {identity_md}", region=region,
         why="1024-bit keys are below current guidance (RFC 8301 recommends 2048). Mail still passes today, so this "
             "is a note.",
-        steps=["Ask SES for a 2048-bit key; SES publishes new tokens and keeps signing with the old key until "
-               "the new CNAMEs resolve.", "Publish the three new CNAMEs SES returns."],
+        steps=[("Ask SES for a 2048-bit key; SES publishes new tokens and keeps signing with the old key until "
+                "the new CNAMEs resolve."), "Publish the three new CNAMEs SES returns."],
         commands=[f"aws sesv2 put-email-identity-dkim-signing-attributes --email-identity {q(identity)}"
                   f"{_region_flag(region)} --signing-attributes-origin AWS_SES --signing-attributes NextSigningKeyLength=RSA_2048_BIT"],
         verify=["`DkimAttributes.CurrentSigningKeyLength` is RSA_2048_BIT after the CNAMEs propagate."],
@@ -318,8 +318,8 @@ def account_rate_brief(metric: str, rate: float, line: float) -> str:
         why=("This is the number AWS enforces on: it reviews accounts at 0.10% complaints or 5% bounces and can pause "
              "sending at 0.5% or 10%. It only counts providers that send complaint feedback, so Gmail's complaints "
              "are invisible here and the true rate may be higher."),
-        steps=["Open the Mailbox providers and Records sections to find which path and list source produced the "
-               "recent complaints or bounces.",
+        steps=[("Open the Mailbox providers and Records sections to find which path and list source produced the "
+                "recent complaints or bounces."),
                "Stop sending to that source; add double opt-in and a visible unsubscribe link.",
                "Watch the rolling rate: it is a trailing average and takes days to fall."],
         commands=["aws cloudwatch get-metric-statistics --namespace AWS/SES --metric-name " + name

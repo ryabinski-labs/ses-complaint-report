@@ -278,7 +278,7 @@ def auth_findings(identities: list[dict], resolver, region: str = "",
                     if hosts & app_dkim_mx:
                         signer = "app (by MX)"
                 except (DnsTimeout, DnsBudget):
-                    pass
+                    signer = ""  # unknown MX: fall through to the "SES not signing" note
             selector = (ident.get("tags") or {}).get("DkimSelector") or ""
             if signer and selector:
                 # the app told us its selector: the key must actually be published

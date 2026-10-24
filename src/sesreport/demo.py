@@ -210,7 +210,7 @@ def demo_model(seed: int = 7) -> dict:
             "rows": [
                 {"name": f"send{i}.example.com", "type": "DOMAIN",
                  "dkim_status": "FAILED" if i >= 34 else "NOT_STARTED" if i < 4 else "SUCCESS",
-                 "dkim_signing": 4 <= i < 34, "dkim_key_length": "RSA_1024_BIT" if i == 6 else "RSA_2048_BIT",
+                 "dkim_signing": i >= 4 and i < 34, "dkim_key_length": "RSA_1024_BIT" if i == 6 else "RSA_2048_BIT",
                  "verified": i < 34, "verification_status": "SUCCESS" if i < 34 else "FAILED", "sending": i < 34,
                  "mail_from_domain": "" if i in (3, 7) else f"bounce.send{i}.example.com",
                  "mail_from_status": "" if i in (3, 7) else "SUCCESS",
