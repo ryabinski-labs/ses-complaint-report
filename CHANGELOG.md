@@ -6,6 +6,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- Release workflow publishes the sdist and wheel to PyPI with trusted
+  publishing (OIDC, `pypi` environment, `v*` tags only); no API token is stored.
+
 ## [1.1.0] - 2026-10-24
 
 ### Changed
