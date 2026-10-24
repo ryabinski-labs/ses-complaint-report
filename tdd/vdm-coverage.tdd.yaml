@@ -28,7 +28,7 @@ requirements:
     prd_ref: "§5 story 1; §12 Ledger counter items; A-001"
     scenarios:
       - id: SC-001-a
-        test_ref: "tests/test_vdm_coverage_tdd.py::SC-001-a"
+        test_ref: "tests/test_vdm_coverage_tdd.py::test_sc_001_a_delivery_to_3_gmail_recipients_yields_one_counter_update_of_3"
         level: unit
         title: Delivery to 3 gmail recipients yields one counter update of 3
         given: an SES Delivery notification on 2026-10-24 to 3 gmail.com recipients from no-reply@example.com through config set transactional
@@ -38,7 +38,7 @@ requirements:
         doubles: none — pure function
         status: green
       - id: SC-001-b
-        test_ref: "tests/test_vdm_coverage_tdd.py::SC-001-b"
+        test_ref: "tests/test_vdm_coverage_tdd.py::test_sc_001_b_counter_updates_never_contain_a_recipient_address"
         level: unit
         title: Counter updates never contain a recipient address
         given: a Delivery notification to alice@gmail.com and bob@yahoo.com
@@ -49,7 +49,7 @@ requirements:
         negative: true
         status: green
       - id: SC-001-c
-        test_ref: "tests/test_vdm_coverage_tdd.py::SC-001-c"
+        test_ref: "tests/test_vdm_coverage_tdd.py::test_sc_001_c_untagged_delivery_is_keyed_to_config_set_none"
         level: unit
         title: Untagged delivery is keyed to config set (none)
         given: a Delivery notification with no ses:configuration-set tag
@@ -59,7 +59,7 @@ requirements:
         doubles: none
         status: green
       - id: SC-001-d
-        test_ref: "tests/test_vdm_coverage_tdd.py::SC-001-d"
+        test_ref: "tests/test_vdm_coverage_tdd.py::test_sc_001_d_a_redelivered_sns_message_is_counted_once"
         level: integration
         title: A redelivered SNS message is counted once
         given: an in-memory DynamoDB fake supporting conditional put and ADD, and one Delivery event with messageId M
@@ -70,7 +70,7 @@ requirements:
         negative: true
         status: green
       - id: SC-001-e
-        test_ref: "tests/test_vdm_coverage_tdd.py::SC-001-e"
+        test_ref: "tests/test_vdm_coverage_tdd.py::test_sc_001_e_counter_and_marker_ttls_follow_retention_rules"
         level: unit
         title: Counter and marker TTLs follow retention rules
         given: RETENTION_DAYS=396 and NOW=2026-10-24T00:00Z
@@ -86,7 +86,7 @@ requirements:
     prd_ref: "§5 story 2 criterion 3; DL-004; A-002"
     scenarios:
       - id: SC-002-a
-        test_ref: "tests/test_vdm_coverage_tdd.py::SC-002-a"
+        test_ref: "tests/test_vdm_coverage_tdd.py::test_sc_002_a_consumer_microsoft_domains_map_to_microsoft_without_dns"
         level: unit
         title: Consumer Microsoft domains map to Microsoft without DNS
         given: domains outlook.com, hotmail.com, live.com, msn.com and an MX lookup that raises if called
@@ -96,7 +96,7 @@ requirements:
         doubles: MX lookup replaced by a function that raises
         status: green
       - id: SC-002-b
-        test_ref: "tests/test_vdm_coverage_tdd.py::SC-002-b"
+        test_ref: "tests/test_vdm_coverage_tdd.py::test_sc_002_b_business_domain_classified_by_mx_suffix"
         level: unit
         title: Business domain classified by MX suffix
         given: acme.example whose MX is acme-example.mail.protection.outlook.com and beta.example whose MX is aspmx.l.google.com
@@ -106,7 +106,7 @@ requirements:
         doubles: stub MX resolver returning fixed records
         status: green
       - id: SC-002-c
-        test_ref: "tests/test_vdm_coverage_tdd.py::SC-002-c"
+        test_ref: "tests/test_vdm_coverage_tdd.py::test_sc_002_c_unknown_or_failing_mx_maps_to_other"
         level: unit
         title: Unknown or failing MX maps to Other
         given: a domain whose MX lookup times out and a domain whose MX host matches no provider
@@ -117,7 +117,7 @@ requirements:
         negative: true
         status: green
       - id: SC-002-d
-        test_ref: "tests/test_vdm_coverage_tdd.py::SC-002-d"
+        test_ref: "tests/test_vdm_coverage_tdd.py::test_sc_002_d_mx_results_are_cached_for_7_days_in_the_data_directory"
         level: integration
         title: MX results are cached for 7 days in the data directory
         given: a temp data dir and a counting stub resolver
@@ -133,7 +133,7 @@ requirements:
     prd_ref: "§5 story 2; DL-007; DL-008"
     scenarios:
       - id: SC-003-a
-        test_ref: "tests/test_vdm_coverage_tdd.py::SC-003-a"
+        test_ref: "tests/test_vdm_coverage_tdd.py::test_sc_003_a_rates_are_complaints_and_bounces_over_deliveries"
         level: unit
         title: Rates are complaints and bounces over deliveries
         given: provider Yahoo with 20,000 deliveries, 16 complaints and 300 permanent bounces
@@ -144,7 +144,7 @@ requirements:
         data: {deliveries: 20000, complaints: 16, bounces: 300}
         status: green
       - id: SC-003-b
-        test_ref: "tests/test_vdm_coverage_tdd.py::SC-003-b"
+        test_ref: "tests/test_vdm_coverage_tdd.py::test_sc_003_b_rate_floor_at_1_000_deliveries_boundary"
         level: unit
         title: Rate floor at 1,000 deliveries (boundary)
         given: providers with 999 and 1,000 deliveries and 1 complaint each
@@ -154,7 +154,7 @@ requirements:
         doubles: none
         status: green
       - id: SC-003-c
-        test_ref: "tests/test_vdm_coverage_tdd.py::SC-003-c"
+        test_ref: "tests/test_vdm_coverage_tdd.py::test_sc_003_c_rows_sorted_by_deliveries_descending"
         level: unit
         title: Rows sorted by deliveries descending
         given: Google 30,000, Microsoft 12,000, Yahoo 20,000 deliveries
@@ -164,7 +164,7 @@ requirements:
         doubles: none
         status: green
       - id: SC-003-d
-        test_ref: "tests/test_vdm_coverage_tdd.py::SC-003-d"
+        test_ref: "tests/test_vdm_coverage_tdd.py::test_sc_003_d_range_scopes_counts_and_rates"
         level: unit
         title: Range scopes counts and rates
         given: counters on 2026-10-20 (1,500 deliveries) and 2026-08-01 (5,000 deliveries) for Google
@@ -174,7 +174,7 @@ requirements:
         doubles: none
         status: green
       - id: SC-003-e
-        test_ref: "tests/ui/vdm-coverage.tdd.spec.mjs::SC-003-e"
+        test_ref: "tests/ui/vdm-coverage.tdd.spec.mjs --grep SC-003-e"
         level: acceptance
         title: Mailbox providers section renders with rates and the floor note
         given: the dashboard in demo mode
@@ -190,7 +190,7 @@ requirements:
     prd_ref: "§5 story 3; DL-009"
     scenarios:
       - id: SC-004-a
-        test_ref: "tests/test_vdm_coverage_tdd.py::SC-004-a"
+        test_ref: "tests/test_vdm_coverage_tdd.py::test_sc_004_a_identity_and_config_set_groupings_share_columns_and_floor"
         level: unit
         title: Identity and config-set groupings share columns and floor
         given: counters for identities example.com (5,000) and news.example.com (400), config sets transactional (5,000) and (none) (400)
@@ -206,7 +206,7 @@ requirements:
     prd_ref: "§5 story 4 criterion 1; DL-006"
     scenarios:
       - id: SC-005-a
-        test_ref: "tests/test_vdm_coverage_tdd.py::SC-005-a"
+        test_ref: "tests/test_vdm_coverage_tdd.py::test_sc_005_a_failed_dkim_becomes_a_high_finding"
         level: unit
         title: Failed DKIM becomes a high finding
         given: identities a.example (SUCCESS) and b.example (FAILED)
@@ -222,7 +222,7 @@ requirements:
     prd_ref: "§5 story 4 criterion 2; DL-006"
     scenarios:
       - id: SC-006-a
-        test_ref: "tests/test_vdm_coverage_tdd.py::SC-006-a"
+        test_ref: "tests/test_vdm_coverage_tdd.py::test_sc_006_a_missing_custom_mail_from_is_medium"
         level: unit
         title: Missing custom MAIL FROM is medium
         given: identity c.example with no MailFromAttributes.MailFromDomain
@@ -232,7 +232,7 @@ requirements:
         doubles: DNS stub
         status: green
       - id: SC-006-b
-        test_ref: "tests/test_vdm_coverage_tdd.py::SC-006-b"
+        test_ref: "tests/test_vdm_coverage_tdd.py::test_sc_006_b_mail_from_spf_without_amazonses_include_is_medium"
         level: unit
         title: MAIL FROM SPF without amazonses include is medium
         given: identity d.example with MAIL FROM bounce.d.example whose TXT is "v=spf1 -all"
@@ -248,7 +248,7 @@ requirements:
     prd_ref: "§5 story 4 criterion 3; DL-006"
     scenarios:
       - id: SC-007-a
-        test_ref: "tests/test_vdm_coverage_tdd.py::SC-007-a"
+        test_ref: "tests/test_vdm_coverage_tdd.py::test_sc_007_a_dmarc_decision_table"
         level: unit
         title: DMARC decision table
         given: domains with no _dmarc TXT, with "v=DMARC1; p=none; rua=mailto:r@x", with "v=DMARC1; p=quarantine", and with "v=DMARC1; p=reject; rua=mailto:r@x"
@@ -264,7 +264,7 @@ requirements:
     prd_ref: "§5 story 4 criterion 4; §13 DNS"
     scenarios:
       - id: SC-008-a
-        test_ref: "tests/test_vdm_coverage_tdd.py::SC-008-a"
+        test_ref: "tests/test_vdm_coverage_tdd.py::test_sc_008_a_dns_timeout_is_not_a_finding"
         level: unit
         title: DNS timeout is not a finding
         given: a resolver that raises a timeout for e.example
@@ -275,7 +275,7 @@ requirements:
         negative: true
         status: green
       - id: SC-008-b
-        test_ref: "tests/test_vdm_coverage_tdd.py::SC-008-b"
+        test_ref: "tests/test_vdm_coverage_tdd.py::test_sc_008_b_resolver_is_configured_with_a_2_second_timeout"
         level: unit
         title: Resolver is configured with a 2 second timeout
         given: the default resolver factory
@@ -291,7 +291,7 @@ requirements:
     prd_ref: "§5 story 5; A-005"
     scenarios:
       - id: SC-009-a
-        test_ref: "tests/test_vdm_coverage_tdd.py::SC-009-a"
+        test_ref: "tests/test_vdm_coverage_tdd.py::test_sc_009_a_complaint_threshold_boundaries"
         level: unit
         title: Complaint threshold boundaries
         given: rows of 10,000 deliveries with 7, 8, 10 complaints
@@ -301,7 +301,7 @@ requirements:
         doubles: none
         status: green
       - id: SC-009-b
-        test_ref: "tests/test_vdm_coverage_tdd.py::SC-009-b"
+        test_ref: "tests/test_vdm_coverage_tdd.py::test_sc_009_b_bounce_threshold_boundaries"
         level: unit
         title: Bounce threshold boundaries
         given: rows of 10,000 deliveries with 499, 500, 1,000 permanent bounces
@@ -311,7 +311,7 @@ requirements:
         doubles: none
         status: green
       - id: SC-009-c
-        test_ref: "tests/test_vdm_coverage_tdd.py::SC-009-c"
+        test_ref: "tests/test_vdm_coverage_tdd.py::test_sc_009_c_floor_suppresses_threshold_findings"
         level: unit
         title: Floor suppresses threshold findings
         given: a row with 999 deliveries and 5 complaints
@@ -328,7 +328,7 @@ requirements:
     prd_ref: "§5 story 6; DL-003; A-006"
     scenarios:
       - id: SC-010-a
-        test_ref: "tests/test_vdm_coverage_tdd.py::SC-010-a"
+        test_ref: "tests/test_vdm_coverage_tdd.py::test_sc_010_a_brief_has_the_seven_sections_in_order"
         level: unit
         title: Brief has the seven sections in order
         given: a dkim finding for b.example
@@ -338,7 +338,7 @@ requirements:
         doubles: none
         status: green
       - id: SC-010-b
-        test_ref: "tests/test_vdm_coverage_tdd.py::SC-010-b"
+        test_ref: "tests/test_vdm_coverage_tdd.py::test_sc_010_b_commands_survive_the_shell_for_any_resource_name_property"
         level: unit
         title: Commands survive the shell for any resource name (property)
         given: config-set names generated from printable ASCII including quotes, spaces, semicolons and dollar signs
@@ -348,7 +348,7 @@ requirements:
         doubles: none
         status: green
       - id: SC-010-c
-        test_ref: "tests/test_vdm_coverage_tdd.py::SC-010-c"
+        test_ref: "tests/test_vdm_coverage_tdd.py::test_sc_010_c_routing_brief_embeds_the_existing_event_destination_command"
         level: unit
         title: Routing brief embeds the existing event-destination command
         given: a routing gap for config set legacy
@@ -358,7 +358,7 @@ requirements:
         doubles: none
         status: green
       - id: SC-010-d
-        test_ref: "tests/ui/vdm-coverage.tdd.spec.mjs::SC-010-d"
+        test_ref: "tests/ui/vdm-coverage.tdd.spec.mjs --grep SC-010-d"
         level: acceptance
         title: Clicking Fix copies the Markdown brief and names the resource
         given: the dashboard in demo mode with clipboard permission
@@ -374,7 +374,7 @@ requirements:
     prd_ref: "§5 story 7; A-003; DL-009"
     scenarios:
       - id: SC-011-a
-        test_ref: "tests/test_vdm_coverage_tdd.py::SC-011-a"
+        test_ref: "tests/test_vdm_coverage_tdd.py::test_sc_011_a_repeat_opens_of_one_message_count_once"
         level: integration
         title: Repeat opens of one message count once
         given: the in-memory DynamoDB fake and 3 Open events for message M to a yahoo.com recipient
@@ -385,7 +385,7 @@ requirements:
         negative: true
         status: green
       - id: SC-011-b
-        test_ref: "tests/test_vdm_coverage_tdd.py::SC-011-b"
+        test_ref: "tests/test_vdm_coverage_tdd.py::test_sc_011_b_open_and_click_rates_use_deliveries_as_denominator"
         level: unit
         title: Open and click rates use deliveries as denominator
         given: Yahoo with 2,000 deliveries, 500 unique opens, 40 unique clicks
@@ -395,7 +395,7 @@ requirements:
         doubles: none
         status: green
       - id: SC-011-c
-        test_ref: "tests/ui/vdm-coverage.tdd.spec.mjs::SC-011-c"
+        test_ref: "tests/ui/vdm-coverage.tdd.spec.mjs --grep SC-011-c"
         level: acceptance
         title: Engagement columns and MPP caveat are visible
         given: the dashboard in demo mode
@@ -411,7 +411,7 @@ requirements:
     prd_ref: "§5 story 8; DL-003"
     scenarios:
       - id: SC-012-a
-        test_ref: "tests/test_vdm_coverage_tdd.py::SC-012-a"
+        test_ref: "tests/test_vdm_coverage_tdd.py::test_sc_012_a_config_set_missing_delivery_open_click_is_flagged"
         level: unit
         title: Config set missing DELIVERY/OPEN/CLICK is flagged
         given: config set transactional with event types BOUNCE, COMPLAINT only
@@ -421,7 +421,7 @@ requirements:
         doubles: none
         status: green
       - id: SC-012-b
-        test_ref: "tests/test_vdm_coverage_tdd.py::SC-012-b"
+        test_ref: "tests/test_vdm_coverage_tdd.py::test_sc_012_b_identity_topic_without_delivery_notifications_is_an_info_finding"
         level: unit
         title: Identity topic without Delivery notifications is an info finding
         given: identity send0.example.com with bounce and complaint topics but no delivery topic
@@ -437,7 +437,7 @@ requirements:
     prd_ref: "§5 story 10; §6 States"
     scenarios:
       - id: SC-013-a
-        test_ref: "tests/test_vdm_coverage_tdd.py::SC-013-a"
+        test_ref: "tests/test_vdm_coverage_tdd.py::test_sc_013_a_ledger_not_configured_state"
         level: unit
         title: Ledger not configured state
         given: ledger configured False
@@ -447,7 +447,7 @@ requirements:
         doubles: none
         status: green
       - id: SC-013-b
-        test_ref: "tests/test_vdm_coverage_tdd.py::SC-013-b"
+        test_ref: "tests/test_vdm_coverage_tdd.py::test_sc_013_b_complaints_but_no_deliveries_state"
         level: unit
         title: Complaints but no deliveries state
         given: ledger rows with 5 complaints and zero DELIVERY counters
@@ -457,7 +457,7 @@ requirements:
         doubles: none
         status: green
       - id: SC-013-c
-        test_ref: "tests/test_vdm_coverage_tdd.py::SC-013-c"
+        test_ref: "tests/test_vdm_coverage_tdd.py::test_sc_013_c_ledger_aggregate_read_failure_becomes_a_collector_warning"
         level: integration
         title: Ledger aggregate read failure becomes a collector warning
         given: collect_all with a DynamoDB fake whose Query on AGG# partitions raises AccessDenied
@@ -468,7 +468,7 @@ requirements:
         negative: true
         status: green
       - id: SC-013-d
-        test_ref: "tests/ui/vdm-coverage.tdd.spec.mjs::SC-013-d"
+        test_ref: "tests/ui/vdm-coverage.tdd.spec.mjs --grep SC-013-d"
         level: acceptance
         title: No delivery data yet is stated with a fix brief
         given: the dashboard with /api/report overridden so the ledger has complaints and no delivery counters
@@ -484,7 +484,7 @@ requirements:
     prd_ref: "§5 story 9"
     scenarios:
       - id: SC-014-a
-        test_ref: "tests/test_vdm_coverage_tdd.py::SC-014-a"
+        test_ref: "tests/test_vdm_coverage_tdd.py::test_sc_014_a_demo_model_carries_breakdowns_and_at_least_3_advisor_findings"
         level: unit
         title: Demo model carries breakdowns and at least 3 Advisor findings
         given: demo_model()
@@ -500,7 +500,7 @@ requirements:
     prd_ref: "§7 Constraints; DL-001; DL-003"
     scenarios:
       - id: SC-015-a
-        test_ref: "tests/test_vdm_coverage_tdd.py::SC-015-a"
+        test_ref: "tests/test_vdm_coverage_tdd.py::test_sc_015_a_a_full_collection_makes_no_vdm_or_write_calls"
         level: integration
         title: A full collection makes no VDM or write calls
         given: collect_all with recording fake boto3 clients for every service
@@ -517,7 +517,7 @@ requirements:
     prd_ref: "§13 DNS; §13 Counter reads"
     scenarios:
       - id: SC-016-a
-        test_ref: "tests/test_vdm_coverage_tdd.py::SC-016-a"
+        test_ref: "tests/test_vdm_coverage_tdd.py::test_sc_016_a_dns_lookups_capped_at_120_per_refresh"
         level: integration
         title: DNS lookups capped at 120 per refresh
         given: 200 distinct recipient domains not in the static map and an empty MX cache
@@ -527,7 +527,7 @@ requirements:
         doubles: counting stub resolver
         status: green
       - id: SC-016-b
-        test_ref: "tests/test_vdm_coverage_tdd.py::SC-016-b"
+        test_ref: "tests/test_vdm_coverage_tdd.py::test_sc_016_b_warm_refresh_re_reads_only_the_last_2_days"
         level: integration
         title: Warm refresh re-reads only the last 2 days
         given: a data dir with cached aggregates for 365 past days and a counting DynamoDB fake

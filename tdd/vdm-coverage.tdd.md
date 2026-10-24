@@ -34,9 +34,9 @@
 - **Given** an SES Delivery notification on 2026-10-24 to 3 gmail.com recipients from no-reply@example.com through config set transactional
 - **When** counters_for_event is called
 - **Then** one update targets pk AGG#2026-10-24, sk gmail.com#example.com#transactional#DELIVERY with n=3
-- **Oracle:** updates == [{"pk":"AGG#2026-10-24","sk":"gmail.com#example.com#transactional#DELIVERY","n":3}]
+- **Oracle:** [{pk,sk,n} of u for u in updates] == [{"pk":"AGG#2026-10-24","sk":"gmail.com#example.com#transactional#DELIVERY","n":3}] (ttl checked by SC-001-e)
 - **Test doubles:** none — pure function
-- **Test:** `tests/test_vdm_coverage_tdd.py::SC-001-a`
+- **Test:** `tests/test_vdm_coverage_tdd.py::test_sc_001_a_delivery_to_3_gmail_recipients_yields_one_counter_update_of_3`
 
 #### SC-001-b — Counter updates never contain a recipient address  `unit` `green`
 
@@ -45,7 +45,7 @@
 - **Then** no field of any update contains "alice" or "bob" or an "@"
 - **Oracle:** not any("@" in str(v) or "alice" in str(v) or "bob" in str(v) for u in updates for v in u.values())
 - **Test doubles:** none
-- **Test:** `tests/test_vdm_coverage_tdd.py::SC-001-b`
+- **Test:** `tests/test_vdm_coverage_tdd.py::test_sc_001_b_counter_updates_never_contain_a_recipient_address`
 
 #### SC-001-c — Untagged delivery is keyed to config set (none)  `unit` `green`
 
@@ -54,7 +54,7 @@
 - **Then** the sort key's config-set segment is "(none)"
 - **Oracle:** updates[0]["sk"].split("#")[2] == "(none)"
 - **Test doubles:** none
-- **Test:** `tests/test_vdm_coverage_tdd.py::SC-001-c`
+- **Test:** `tests/test_vdm_coverage_tdd.py::test_sc_001_c_untagged_delivery_is_keyed_to_config_set_none`
 
 #### SC-001-d — A redelivered SNS message is counted once  `integration` `green`
 
@@ -63,7 +63,7 @@
 - **Then** the counter n equals the recipient count once and one SEEN#M marker exists
 - **Oracle:** fake.counter("AGG#2026-10-24", sk)["n"] == 3 AND fake.count(pk="SEEN#M") == 1
 - **Test doubles:** DynamoDB replaced by in-memory fake (tests/test_ledger_ingest.py pattern); no AWS
-- **Test:** `tests/test_vdm_coverage_tdd.py::SC-001-d`
+- **Test:** `tests/test_vdm_coverage_tdd.py::test_sc_001_d_a_redelivered_sns_message_is_counted_once`
 
 #### SC-001-e — Counter and marker TTLs follow retention rules  `unit` `green`
 
@@ -72,7 +72,7 @@
 - **Then** counter ttl is NOW+396 days and marker ttl is NOW+30 days
 - **Oracle:** u["ttl"] == epoch(NOW)+396*86400 AND marker["ttl"] == epoch(NOW)+30*86400
 - **Test doubles:** none
-- **Test:** `tests/test_vdm_coverage_tdd.py::SC-001-e`
+- **Test:** `tests/test_vdm_coverage_tdd.py::test_sc_001_e_counter_and_marker_ttls_follow_retention_rules`
 
 ### REQ-002 — Recipient domains map to mailbox providers by a static domain map, then by MX record, else Other.
 
@@ -85,7 +85,7 @@
 - **Then** every result is "Microsoft" and the MX lookup was not called
 - **Oracle:** all(classify(d, mx=raiser) == "Microsoft" for d in doms)
 - **Test doubles:** MX lookup replaced by a function that raises
-- **Test:** `tests/test_vdm_coverage_tdd.py::SC-002-a`
+- **Test:** `tests/test_vdm_coverage_tdd.py::test_sc_002_a_consumer_microsoft_domains_map_to_microsoft_without_dns`
 
 #### SC-002-b — Business domain classified by MX suffix  `unit` `green`
 
@@ -94,7 +94,7 @@
 - **Then** acme.example is Microsoft and beta.example is Google
 - **Oracle:** classify("acme.example", mx=stub) == "Microsoft" AND classify("beta.example", mx=stub) == "Google"
 - **Test doubles:** stub MX resolver returning fixed records
-- **Test:** `tests/test_vdm_coverage_tdd.py::SC-002-b`
+- **Test:** `tests/test_vdm_coverage_tdd.py::test_sc_002_b_business_domain_classified_by_mx_suffix`
 
 #### SC-002-c — Unknown or failing MX maps to Other  `unit` `green`
 
@@ -103,7 +103,7 @@
 - **Then** both results are "Other"
 - **Oracle:** classify("t.example", mx=timeout) == "Other" AND classify("u.example", mx=stub) == "Other"
 - **Test doubles:** stub resolver raising a timeout
-- **Test:** `tests/test_vdm_coverage_tdd.py::SC-002-c`
+- **Test:** `tests/test_vdm_coverage_tdd.py::test_sc_002_c_unknown_or_failing_mx_maps_to_other`
 
 #### SC-002-d — MX results are cached for 7 days in the data directory  `integration` `green`
 
@@ -112,7 +112,7 @@
 - **Then** the resolver is called once for the first two runs and again on day 8
 - **Oracle:** resolver.calls == 2 AND (tmp/"providers-mx-cache.json").exists()
 - **Test doubles:** stub resolver; real filesystem (tmp_path); injected clock
-- **Test:** `tests/test_vdm_coverage_tdd.py::SC-002-d`
+- **Test:** `tests/test_vdm_coverage_tdd.py::test_sc_002_d_mx_results_are_cached_for_7_days_in_the_data_directory`
 
 ### REQ-003 — The Mailbox providers table shows deliveries, complaints, complaint rate, permanent bounces and bounce rate per provider for the selected Range, sorted by deliveries, with rates only at or above 1,000 deliveries.
 
@@ -126,7 +126,7 @@
 - **Oracle:** row.complaint_rate == 0.0008 AND row.bounce_rate == 0.015
 - **Test doubles:** none
 - **Data:** `{"bounces": 300, "complaints": 16, "deliveries": 20000}`
-- **Test:** `tests/test_vdm_coverage_tdd.py::SC-003-a`
+- **Test:** `tests/test_vdm_coverage_tdd.py::test_sc_003_a_rates_are_complaints_and_bounces_over_deliveries`
 
 #### SC-003-b — Rate floor at 1,000 deliveries (boundary)  `unit` `green`
 
@@ -135,7 +135,7 @@
 - **Then** the 999 row has rates None with reason "too few deliveries"; the 1,000 row has complaint_rate 0.001
 - **Oracle:** r999.complaint_rate is None AND r999.rate_note == "too few deliveries" AND r1000.complaint_rate == 0.001
 - **Test doubles:** none
-- **Test:** `tests/test_vdm_coverage_tdd.py::SC-003-b`
+- **Test:** `tests/test_vdm_coverage_tdd.py::test_sc_003_b_rate_floor_at_1_000_deliveries_boundary`
 
 #### SC-003-c — Rows sorted by deliveries descending  `unit` `green`
 
@@ -144,7 +144,7 @@
 - **Then** provider order is Google, Yahoo, Microsoft
 - **Oracle:** [r.name for r in providers] == ["Google","Yahoo","Microsoft"]
 - **Test doubles:** none
-- **Test:** `tests/test_vdm_coverage_tdd.py::SC-003-c`
+- **Test:** `tests/test_vdm_coverage_tdd.py::test_sc_003_c_rows_sorted_by_deliveries_descending`
 
 #### SC-003-d — Range scopes counts and rates  `unit` `green`
 
@@ -153,7 +153,7 @@
 - **Then** Google deliveries is 1,500
 - **Oracle:** providers["Google"].deliveries == 1500
 - **Test doubles:** none
-- **Test:** `tests/test_vdm_coverage_tdd.py::SC-003-d`
+- **Test:** `tests/test_vdm_coverage_tdd.py::test_sc_003_d_range_scopes_counts_and_rates`
 
 #### SC-003-e — Mailbox providers section renders with rates and the floor note  `acceptance` `green`
 
@@ -162,7 +162,7 @@
 - **Then** a Mailbox providers section lists providers with the five columns, at least one row reads "too few deliveries", and the numbers change with the Range
 - **Oracle:** locator("#providers tbody tr").count() >= 3 AND text("#providers") contains "too few deliveries" AND deliveries(All) != deliveries(30d)
 - **Test doubles:** none — real app in demo mode (tests/ui webServer)
-- **Test:** `tests/ui/vdm-coverage.tdd.spec.mjs::SC-003-e`
+- **Test:** `tests/ui/vdm-coverage.tdd.spec.mjs --grep SC-003-e`
 
 ### REQ-004 — Per-identity and per-config-set tables use the same five columns and the same 1,000-delivery floor.
 
@@ -175,7 +175,7 @@
 - **Then** both groupings expose deliveries, complaints, complaint_rate, bounces, bounce_rate; the 400 rows have rates None
 - **Oracle:** set(identities[0]) >= COLS AND identities["news.example.com"].complaint_rate is None AND config_sets["(none)"].complaint_rate is None
 - **Test doubles:** none
-- **Test:** `tests/test_vdm_coverage_tdd.py::SC-004-a`
+- **Test:** `tests/test_vdm_coverage_tdd.py::test_sc_004_a_identity_and_config_set_groupings_share_columns_and_floor`
 
 ### REQ-005 — The Advisor raises a high finding with a fix brief for each identity whose DKIM status is not SUCCESS.
 
@@ -188,7 +188,7 @@
 - **Then** exactly one finding, severity high, resource b.example, kind dkim, with a non-empty brief
 - **Oracle:** len(fs) == 1 AND fs[0].severity == "high" AND fs[0].resource == "b.example" AND fs[0].brief
 - **Test doubles:** DNS resolver stub returning passing SPF/DMARC so only DKIM varies
-- **Test:** `tests/test_vdm_coverage_tdd.py::SC-005-a`
+- **Test:** `tests/test_vdm_coverage_tdd.py::test_sc_005_a_failed_dkim_becomes_a_high_finding`
 
 ### REQ-006 — The Advisor raises a medium finding for a sending domain without a custom MAIL FROM or whose MAIL FROM SPF TXT lacks include:amazonses.com.
 
@@ -201,7 +201,7 @@
 - **Then** one medium finding of kind mail_from names c.example
 - **Oracle:** any(f.kind=="mail_from" and f.severity=="medium" and f.resource=="c.example" for f in fs)
 - **Test doubles:** DNS stub
-- **Test:** `tests/test_vdm_coverage_tdd.py::SC-006-a`
+- **Test:** `tests/test_vdm_coverage_tdd.py::test_sc_006_a_missing_custom_mail_from_is_medium`
 
 #### SC-006-b — MAIL FROM SPF without amazonses include is medium  `unit` `green`
 
@@ -210,7 +210,7 @@
 - **Then** one medium finding of kind spf names bounce.d.example
 - **Oracle:** any(f.kind=="spf" and f.severity=="medium" and f.resource=="bounce.d.example" for f in fs)
 - **Test doubles:** DNS stub
-- **Test:** `tests/test_vdm_coverage_tdd.py::SC-006-b`
+- **Test:** `tests/test_vdm_coverage_tdd.py::test_sc_006_b_mail_from_spf_without_amazonses_include_is_medium`
 
 ### REQ-007 — The Advisor checks DMARC per sending domain - missing record high, p=none medium, missing rua info.
 
@@ -223,7 +223,7 @@
 - **Then** severities are high, medium, info, and no finding respectively
 - **Oracle:** [sev(d) for d in doms] == ["high","medium","info",None]
 - **Test doubles:** DNS stub
-- **Test:** `tests/test_vdm_coverage_tdd.py::SC-007-a`
+- **Test:** `tests/test_vdm_coverage_tdd.py::test_sc_007_a_dmarc_decision_table`
 
 ### REQ-008 — A DNS lookup that times out after 2 seconds marks the check "not checked - DNS timeout" and produces no finding.
 
@@ -236,7 +236,7 @@
 - **Then** no finding for e.example and its check status reads "not checked: DNS timeout"
 - **Oracle:** not [f for f in fs if f.resource.endswith("e.example")] AND checks["e.example"]["dmarc"] == "not checked: DNS timeout"
 - **Test doubles:** DNS stub raising timeout
-- **Test:** `tests/test_vdm_coverage_tdd.py::SC-008-a`
+- **Test:** `tests/test_vdm_coverage_tdd.py::test_sc_008_a_dns_timeout_is_not_a_finding`
 
 #### SC-008-b — Resolver is configured with a 2 second timeout  `unit` `green`
 
@@ -245,7 +245,7 @@
 - **Then** its lifetime is 2.0 seconds
 - **Oracle:** make_resolver().lifetime == 2.0
 - **Test doubles:** none
-- **Test:** `tests/test_vdm_coverage_tdd.py::SC-008-b`
+- **Test:** `tests/test_vdm_coverage_tdd.py::test_sc_008_b_resolver_is_configured_with_a_2_second_timeout`
 
 ### REQ-009 — Threshold findings flag rows with at least 1,000 deliveries at complaint 0.08% medium, 0.10% high and bounce 5% medium, 10% high.
 
@@ -258,7 +258,7 @@
 - **Then** severities are none, medium, high
 - **Oracle:** [sev(r) for r in rows] == [None,"medium","high"]
 - **Test doubles:** none
-- **Test:** `tests/test_vdm_coverage_tdd.py::SC-009-a`
+- **Test:** `tests/test_vdm_coverage_tdd.py::test_sc_009_a_complaint_threshold_boundaries`
 
 #### SC-009-b — Bounce threshold boundaries  `unit` `green`
 
@@ -267,7 +267,7 @@
 - **Then** severities are none, medium, high
 - **Oracle:** [sev(r) for r in rows] == [None,"medium","high"]
 - **Test doubles:** none
-- **Test:** `tests/test_vdm_coverage_tdd.py::SC-009-b`
+- **Test:** `tests/test_vdm_coverage_tdd.py::test_sc_009_b_bounce_threshold_boundaries`
 
 #### SC-009-c — Floor suppresses threshold findings  `unit` `green`
 
@@ -276,7 +276,7 @@
 - **Then** no finding
 - **Oracle:** threshold_findings([row]) == []
 - **Test doubles:** none
-- **Test:** `tests/test_vdm_coverage_tdd.py::SC-009-c`
+- **Test:** `tests/test_vdm_coverage_tdd.py::test_sc_009_c_floor_suppresses_threshold_findings`
 
 ### REQ-010 — Every Fix button copies a Markdown brief with Problem, Affected resource, Why it matters, Steps, Commands, Verify and Rollback, with shell-quoted commands; routing fixes embed the create-configuration-set-event-destination command.
 
@@ -289,7 +289,7 @@
 - **Then** the Markdown contains the headings Problem, Affected resource, Why it matters, Steps, Commands, Verify, Rollback in that order
 - **Oracle:** headings(md) == ["Problem","Affected resource","Why it matters","Steps","Commands","Verify","Rollback"]
 - **Test doubles:** none
-- **Test:** `tests/test_vdm_coverage_tdd.py::SC-010-a`
+- **Test:** `tests/test_vdm_coverage_tdd.py::test_sc_010_a_brief_has_the_seven_sections_in_order`
 
 #### SC-010-b — Commands survive the shell for any resource name (property)  `unit` `green`
 
@@ -298,7 +298,7 @@
 - **Then** the argument after --configuration-set-name equals the generated name
 - **Oracle:** for all names - shlex.split(cmd)[i+1] == name where i is the index of "--configuration-set-name"
 - **Test doubles:** none
-- **Test:** `tests/test_vdm_coverage_tdd.py::SC-010-b`
+- **Test:** `tests/test_vdm_coverage_tdd.py::test_sc_010_b_commands_survive_the_shell_for_any_resource_name_property`
 
 #### SC-010-c — Routing brief embeds the existing event-destination command  `unit` `green`
 
@@ -307,7 +307,7 @@
 - **Then** the Commands block contains "aws sesv2 create-configuration-set-event-destination" and MatchingEventTypes BOUNCE and COMPLAINT
 - **Oracle:** "create-configuration-set-event-destination" in cmd AND json.loads(dest)["MatchingEventTypes"] >= ["BOUNCE","COMPLAINT"]
 - **Test doubles:** none
-- **Test:** `tests/test_vdm_coverage_tdd.py::SC-010-c`
+- **Test:** `tests/test_vdm_coverage_tdd.py::test_sc_010_c_routing_brief_embeds_the_existing_event_destination_command`
 
 #### SC-010-d — Clicking Fix copies the Markdown brief and names the resource  `acceptance` `green`
 
@@ -316,7 +316,7 @@
 - **Then** the clipboard starts with a Markdown heading, contains "## Commands" and the resource name, and the toast names the resource
 - **Oracle:** clip.startsWith("# ") AND clip.includes("## Commands") AND clip.includes(resource) AND toast.includes(resource)
 - **Test doubles:** none — real app in demo mode
-- **Test:** `tests/ui/vdm-coverage.tdd.spec.mjs::SC-010-d`
+- **Test:** `tests/ui/vdm-coverage.tdd.spec.mjs --grep SC-010-d`
 
 ### REQ-011 — Open rate and click rate per provider are messages opened or clicked at least once divided by deliveries, labelled as inflated by Apple Mail Privacy Protection.
 
@@ -329,7 +329,7 @@
 - **Then** the OPEN_UNIQUE counter for yahoo.com is 1
 - **Oracle:** fake.counter(day, "yahoo.com#example.com#transactional#OPEN_UNIQUE")["n"] == 1
 - **Test doubles:** in-memory DynamoDB fake
-- **Test:** `tests/test_vdm_coverage_tdd.py::SC-011-a`
+- **Test:** `tests/test_vdm_coverage_tdd.py::test_sc_011_a_repeat_opens_of_one_message_count_once`
 
 #### SC-011-b — Open and click rates use deliveries as denominator  `unit` `green`
 
@@ -338,7 +338,7 @@
 - **Then** open_rate is 0.25 and click_rate is 0.02
 - **Oracle:** row.open_rate == 0.25 AND row.click_rate == 0.02
 - **Test doubles:** none
-- **Test:** `tests/test_vdm_coverage_tdd.py::SC-011-b`
+- **Test:** `tests/test_vdm_coverage_tdd.py::test_sc_011_b_open_and_click_rates_use_deliveries_as_denominator`
 
 #### SC-011-c — Engagement columns and MPP caveat are visible  `acceptance` `green`
 
@@ -347,7 +347,7 @@
 - **Then** open rate and click rate columns appear with the text "opens inflated by Apple Mail Privacy Protection"
 - **Oracle:** text("#providers") contains "Open rate" AND "Click rate" AND "opens inflated by Apple Mail Privacy Protection"
 - **Test doubles:** none — demo mode
-- **Test:** `tests/ui/vdm-coverage.tdd.spec.mjs::SC-011-c`
+- **Test:** `tests/ui/vdm-coverage.tdd.spec.mjs --grep SC-011-c`
 
 ### REQ-012 — Config sets and identity topics that do not publish Delivery, Open or Click events produce findings with fix briefs.
 
@@ -360,7 +360,7 @@
 - **Then** one finding names transactional and lists DELIVERY, OPEN, CLICK as missing, with a brief that adds them to the existing destination
 - **Oracle:** f.resource == "transactional" AND set(f.missing) == {"DELIVERY","OPEN","CLICK"} AND "update-configuration-set-event-destination" in f.brief
 - **Test doubles:** none
-- **Test:** `tests/test_vdm_coverage_tdd.py::SC-012-a`
+- **Test:** `tests/test_vdm_coverage_tdd.py::test_sc_012_a_config_set_missing_delivery_open_click_is_flagged`
 
 #### SC-012-b — Identity topic without Delivery notifications is an info finding  `unit` `green`
 
@@ -369,7 +369,7 @@
 - **Then** one info finding whose brief contains "set-identity-notification-topic" and "--notification-type Delivery"
 - **Oracle:** f.severity == "info" AND "--notification-type Delivery" in f.brief
 - **Test doubles:** none
-- **Test:** `tests/test_vdm_coverage_tdd.py::SC-012-b`
+- **Test:** `tests/test_vdm_coverage_tdd.py::test_sc_012_b_identity_topic_without_delivery_notifications_is_an_info_finding`
 
 ### REQ-013 — The section explains missing data - ledger not configured, no delivery data yet, ledger read failure - and the rest of the report still renders.
 
@@ -382,7 +382,7 @@
 - **Then** state is "ledger_not_configured" and all tables are empty
 - **Oracle:** b.state == "ledger_not_configured" AND b.providers == []
 - **Test doubles:** none
-- **Test:** `tests/test_vdm_coverage_tdd.py::SC-013-a`
+- **Test:** `tests/test_vdm_coverage_tdd.py::test_sc_013_a_ledger_not_configured_state`
 
 #### SC-013-b — Complaints but no deliveries state  `unit` `green`
 
@@ -391,7 +391,7 @@
 - **Then** state is "no_delivery_data", complaint counts are shown and every rate is None
 - **Oracle:** b.state == "no_delivery_data" AND sum(r.complaints for r in b.providers) == 5 AND all(r.complaint_rate is None for r in b.providers)
 - **Test doubles:** none
-- **Test:** `tests/test_vdm_coverage_tdd.py::SC-013-b`
+- **Test:** `tests/test_vdm_coverage_tdd.py::test_sc_013_b_complaints_but_no_deliveries_state`
 
 #### SC-013-c — Ledger aggregate read failure becomes a collector warning  `integration` `green`
 
@@ -400,7 +400,7 @@
 - **Then** errors contains section "ledger_aggregates" and the metrics and posture sections are still present
 - **Oracle:** "ledger_aggregates" in [e["section"] for e in model["errors"]] AND model["metrics"] AND model["posture"]
 - **Test doubles:** boto3 clients replaced by fakes (no AWS)
-- **Test:** `tests/test_vdm_coverage_tdd.py::SC-013-c`
+- **Test:** `tests/test_vdm_coverage_tdd.py::test_sc_013_c_ledger_aggregate_read_failure_becomes_a_collector_warning`
 
 #### SC-013-d — No delivery data yet is stated with a fix brief  `acceptance` `green`
 
@@ -409,7 +409,7 @@
 - **Then** the Mailbox providers section reads "no delivery data yet" and offers a Fix button
 - **Oracle:** text("#providers") contains "no delivery data yet" AND locator("#providers [data-fix]").count() >= 1
 - **Test doubles:** page.route override of /api/report
-- **Test:** `tests/ui/vdm-coverage.tdd.spec.mjs::SC-013-d`
+- **Test:** `tests/ui/vdm-coverage.tdd.spec.mjs --grep SC-013-d`
 
 ### REQ-014 — Demo mode shows synthetic provider, identity, config-set and Advisor data.
 
@@ -422,7 +422,7 @@
 - **Then** breakdowns.providers has at least 3 rows and advisor findings number at least 3
 - **Oracle:** len(m["breakdowns"]["providers"]) >= 3 AND len(m["advisor"]["findings"]) >= 3
 - **Test doubles:** none
-- **Test:** `tests/test_vdm_coverage_tdd.py::SC-014-a`
+- **Test:** `tests/test_vdm_coverage_tdd.py::test_sc_014_a_demo_model_carries_breakdowns_and_at_least_3_advisor_findings`
 
 ### REQ-015 — The dashboard stays read-only and never calls VDM APIs.
 
@@ -435,7 +435,7 @@
 - **Then** no recorded operation is BatchGetMetricData, ListRecommendations, PutAccountVdmAttributes, CreateExportJob, or any Put, Create, Update, Delete or Set operation
 - **Oracle:** not any(op in FORBIDDEN or re.match(r"(Put|Create|Update|Delete|Set)", op) for op in recorder.ops)
 - **Test doubles:** recording fake boto3 clients
-- **Test:** `tests/test_vdm_coverage_tdd.py::SC-015-a`
+- **Test:** `tests/test_vdm_coverage_tdd.py::test_sc_015_a_a_full_collection_makes_no_vdm_or_write_calls`
 
 ### REQ-016 — Refresh cost stays bounded - at most 120 DNS lookups per refresh with a 7-day cache, and at most 2 ledger aggregate partitions re-read per warm refresh.
 
@@ -448,7 +448,7 @@
 - **Then** at most 120 MX lookups are made and the remainder are classified Other until the next refresh
 - **Oracle:** resolver.calls <= 120
 - **Test doubles:** counting stub resolver
-- **Test:** `tests/test_vdm_coverage_tdd.py::SC-016-a`
+- **Test:** `tests/test_vdm_coverage_tdd.py::test_sc_016_a_dns_lookups_capped_at_120_per_refresh`
 
 #### SC-016-b — Warm refresh re-reads only the last 2 days  `integration` `green`
 
@@ -457,4 +457,4 @@
 - **Then** Query is called for at most 2 AGG# partitions
 - **Oracle:** len({q["pk"] for q in fake.queries}) <= 2
 - **Test doubles:** counting DynamoDB fake; tmp_path data dir
-- **Test:** `tests/test_vdm_coverage_tdd.py::SC-016-b`
+- **Test:** `tests/test_vdm_coverage_tdd.py::test_sc_016_b_warm_refresh_re_reads_only_the_last_2_days`

@@ -12,6 +12,7 @@ cached on disk for 7 days and each refresh makes at most ``max_lookups`` of them
 from __future__ import annotations
 
 import json
+import os
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -20,6 +21,7 @@ OTHER = "Other"
 _TABLE = json.loads((Path(__file__).resolve().parent / "providers.json").read_text())
 DOMAINS: dict[str, str] = _TABLE["domains"]
 MX_SUFFIXES: list[tuple[str, str]] = [tuple(x) for x in _TABLE["mx_suffixes"]]
+KNOWN = set(DOMAINS.values()) | {p for _, p in MX_SUFFIXES} | {OTHER}
 CACHE_TTL_S = 7 * 86400
 MAX_LOOKUPS = 120
 
@@ -67,9 +69,13 @@ class Classifier:
         self._cache: dict[str, dict] = {}
         if cache_path and cache_path.exists():
             try:
-                self._cache = json.loads(cache_path.read_text())
+                raw = json.loads(cache_path.read_text())
             except (ValueError, OSError):
-                self._cache = {}
+                raw = {}
+            # the cache is data, not trusted input: keep only well-formed known providers
+            self._cache = {d: v for d, v in (raw.items() if isinstance(raw, dict) else [])
+                           if isinstance(v, dict) and v.get("provider") in KNOWN
+                           and isinstance(v.get("at"), (int, float))}
 
     def __call__(self, domain: str) -> str:
         d = (domain or "").strip().lower()
@@ -82,7 +88,11 @@ class Classifier:
         if not d or self.mx is None or self.lookups >= self.max_lookups:
             return self._tally(OTHER)
         self.lookups += 1
-        provider = classify(d, self.mx)
+        try:
+            hosts = self.mx(d)
+        except Exception:  # noqa: BLE001 - a timeout or spent budget is "unknown", not "Other": retry next refresh
+            return self._tally(OTHER)
+        provider = provider_for_mx(hosts)
         self._cache[d] = {"provider": provider, "at": self.clock()}
         return self._tally(provider)
 
@@ -94,7 +104,15 @@ class Classifier:
         if not self.cache_path:
             return
         try:
-            self.cache_path.parent.mkdir(parents=True, exist_ok=True)
-            self.cache_path.write_text(json.dumps(self._cache, sort_keys=True))
+            write_private(self.cache_path, json.dumps(self._cache, sort_keys=True))
         except OSError:
             pass
+
+
+def write_private(path: Path, text: str) -> None:
+    """Write a data-dir file readable by its owner only (0600)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(text)
+    os.chmod(path, 0o600)

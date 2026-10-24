@@ -16,6 +16,7 @@ import logging
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
+from urllib.parse import unquote
 
 import boto3
 from boto3.dynamodb.conditions import Attr, Key
@@ -25,7 +26,7 @@ from botocore.exceptions import BotoCoreError, ClientError
 from . import advisor as _advisor
 from . import breakdowns as _breakdowns
 from .config import load as _load_config
-from .providers import Classifier
+from .providers import Classifier, write_private
 
 log = logging.getLogger("sesreport.collect")
 
@@ -448,6 +449,11 @@ def _query_partition(table, pk: str) -> list[dict]:
             return items
 
 
+def _valid_counter(r) -> bool:
+    return (isinstance(r, dict) and all(isinstance(r.get(k), str) for k in ("domain", "identity", "config_set"))
+            and r.get("event") in _breakdowns.EVENT_FIELD and isinstance(r.get("n"), int) and not isinstance(r.get("n"), bool))
+
+
 def read_ledger_aggregates(table, cache_path: Path | None, today: dt.date, days: int = 396,
                            refresh_days: int = 2, workers: int = 8) -> list[dict]:
     """Daily Delivery/Open/Click counters as ``{day, domain, identity, config_set, event, n}``.
@@ -457,9 +463,11 @@ def read_ledger_aggregates(table, cache_path: Path | None, today: dt.date, days:
     cache: dict[str, list] = {}
     if cache_path and cache_path.exists():
         try:
-            cache = json.loads(cache_path.read_text()).get("days", {})
-        except (ValueError, OSError):
-            cache = {}
+            raw = json.loads(cache_path.read_text()).get("days", {})
+        except (ValueError, OSError, AttributeError):
+            raw = {}
+        cache = {d: [r for r in rows if _valid_counter(r)] for d, rows in (raw.items() if isinstance(raw, dict) else [])
+                 if isinstance(d, str) and isinstance(rows, list)}
     wanted = [(today - dt.timedelta(days=i)).isoformat() for i in range(days)]
     recent = set(wanted[:refresh_days])
     todo = [d for d in wanted if d in recent or d not in cache]
@@ -470,15 +478,14 @@ def read_ledger_aggregates(table, cache_path: Path | None, today: dt.date, days:
                 parts = str(it.get("sk", "")).rsplit("#", 3)
                 if len(parts) != 4:
                     continue
-                domain, identity, config_set, event = parts
+                domain, identity, config_set, event = (unquote(p) for p in parts)
                 rows.append({"domain": domain, "identity": identity, "config_set": config_set,
                              "event": event, "n": int(it.get("n", 0))})
             cache[day] = rows
     cache = {d: v for d, v in cache.items() if d in set(wanted)}
     if cache_path:
         try:
-            cache_path.parent.mkdir(parents=True, exist_ok=True)
-            cache_path.write_text(json.dumps({"days": cache}, sort_keys=True))
+            write_private(cache_path, json.dumps({"days": cache}, sort_keys=True))
         except OSError:
             pass
     return [{"day": d, **r} for d, rows in sorted(cache.items()) for r in rows]
@@ -1097,11 +1104,16 @@ def collect_all(cache_dir: Path | None = None, resolver=None) -> dict:
         }
     )
 
-    deliverability = build_deliverability(
-        ledger=ledger, aggregates=aggregates, identities=identities, coverage=suppression_coverage,
-        config_sets=config_sets, identity_feedback=identity_feedback, errors=errors,
-        cache_dir=cache_dir, resolver=resolver,
-    )
+    try:
+        deliverability = build_deliverability(
+            ledger=ledger, aggregates=aggregates, identities=identities, coverage=suppression_coverage,
+            config_sets=config_sets, identity_feedback=identity_feedback, errors=errors,
+            cache_dir=cache_dir, resolver=resolver,
+        )
+    except Exception as e:  # noqa: BLE001 - never let the new section take the whole report down
+        errors.add("deliverability", e)
+        deliverability = {"breakdowns": {"state": "unavailable", "floor": _breakdowns.FLOOR, "ranges": {}},
+                          "advisor": {"findings": [], "checks": {}, "dns": {}}}
 
     model = {
         "meta": {

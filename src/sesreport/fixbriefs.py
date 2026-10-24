@@ -25,8 +25,14 @@ def q(value: str) -> str:
     return shlex.quote(str(value))
 
 
+def _n(value) -> str:
+    """A name as it may appear in Markdown: no backticks, no line breaks."""
+    return " ".join(str(value).replace("`", "'").split())
+
+
 def brief(title: str, *, problem: str, resource: str, why: str, steps: list[str],
           commands: list[str], verify: list[str], rollback: list[str], region: str = "") -> str:
+    title, resource = _n(title), _n(resource)
     lines = [f"# Fix: {title}", "", "## Problem", problem, "", "## Affected resource",
              f"`{resource}`" + (f" in region `{region}`" if region else ""), "", "## Why it matters", why, "",
              "## Steps"]
@@ -43,6 +49,7 @@ def _region_flag(region: str) -> str:
 
 
 def routing_brief(config_set: str, region: str = "") -> str:
+    config_set_md = _n(config_set)
     dest = json.dumps({
         "Enabled": True,
         "MatchingEventTypes": ["BOUNCE", "COMPLAINT"],
@@ -51,9 +58,9 @@ def routing_brief(config_set: str, region: str = "") -> str:
             "DefaultDimensionValue": config_set}]},
     }, separators=(",", ":"))
     return brief(
-        f"route BOUNCE/COMPLAINT events for {config_set}",
-        problem=f"Configuration set `{config_set}` has no event destination for BOUNCE or COMPLAINT events.",
-        resource=f"SES configuration set {config_set}", region=region,
+        f"route BOUNCE/COMPLAINT events for {config_set_md}",
+        problem=f"Configuration set `{config_set_md}` has no event destination for BOUNCE or COMPLAINT events.",
+        resource=f"SES configuration set {config_set_md}", region=region,
         why="Complaints sent through this path never reach the feedback handler or the per-config-set "
             "CloudWatch metric, so ops cannot see them. SES still suppresses the address at account level.",
         steps=["Add a CloudWatch event destination that matches BOUNCE and COMPLAINT.",
@@ -76,6 +83,7 @@ def routing_brief(config_set: str, region: str = "") -> str:
 
 
 def publishing_brief(config_set: str, missing: list[str], destination: dict | None, region: str = "") -> str:
+    config_set_md = _n(config_set)
     missing = sorted(missing)
     engagement = any(m in ("OPEN", "CLICK") for m in missing)
     if destination and destination.get("sns"):
@@ -101,9 +109,9 @@ def publishing_brief(config_set: str, missing: list[str], destination: dict | No
     if engagement:
         steps.insert(0, TRACKING_NOTE)
     return brief(
-        f"publish {', '.join(missing)} events for {config_set}",
-        problem=f"Configuration set `{config_set}` does not publish {', '.join(missing)} events to the ledger.",
-        resource=f"SES configuration set {config_set}", region=region,
+        f"publish {', '.join(missing)} events for {config_set_md}",
+        problem=f"Configuration set `{config_set_md}` does not publish {', '.join(missing)} events to the ledger.",
+        resource=f"SES configuration set {config_set_md}", region=region,
         why="The ledger counts deliveries, opens and clicks to compute per-provider rates. Without these events "
             "the Mailbox providers section has no denominator for sends through this path.",
         steps=steps, commands=cmds,
@@ -115,10 +123,11 @@ def publishing_brief(config_set: str, missing: list[str], destination: dict | No
 
 
 def identity_delivery_brief(identity: str, topic: str, region: str = "") -> str:
+    identity_md = _n(identity)
     return brief(
-        f"publish Delivery notifications for {identity}",
-        problem=f"Identity `{identity}` sends Bounce and Complaint notifications to SNS but not Delivery notifications.",
-        resource=f"SES identity {identity}", region=region,
+        f"publish Delivery notifications for {identity_md}",
+        problem=f"Identity `{identity_md}` sends Bounce and Complaint notifications to SNS but not Delivery notifications.",
+        resource=f"SES identity {identity_md}", region=region,
         why="Sends made without a configuration set are only visible to the ledger through identity notifications. "
             "Without Delivery notifications their rates have no denominator.",
         steps=["Point the identity's Delivery notifications at the same topic as its Complaint notifications."],
@@ -131,10 +140,12 @@ def identity_delivery_brief(identity: str, topic: str, region: str = "") -> str:
 
 
 def dkim_brief(identity: str, status: str, region: str = "") -> str:
+    identity_md = _n(identity)
+    status_md = _n(status)
     return brief(
-        f"repair DKIM for {identity}",
-        problem=f"Identity `{identity}` has DKIM status `{status or 'unknown'}`, not SUCCESS.",
-        resource=f"SES identity {identity}", region=region,
+        f"repair DKIM for {identity_md}",
+        problem=f"Identity `{identity_md}` has DKIM status `{status_md or 'unknown'}`, not SUCCESS.",
+        resource=f"SES identity {identity_md}", region=region,
         why="Mail without a valid DKIM signature fails DMARC alignment and is far more likely to be junked or "
             "rejected by Gmail, Yahoo and Microsoft.",
         steps=["Read the identity's DKIM tokens.",
@@ -148,11 +159,12 @@ def dkim_brief(identity: str, status: str, region: str = "") -> str:
 
 
 def mail_from_brief(domain: str, region: str = "") -> str:
-    mail_from = f"bounce.{domain}"
+    domain_md = _n(domain)
+    mail_from = f"bounce.{domain_md}"
     return brief(
-        f"set a custom MAIL FROM domain for {domain}",
-        problem=f"Identity `{domain}` sends with the default MAIL FROM (amazonses.com).",
-        resource=f"SES identity {domain}", region=region,
+        f"set a custom MAIL FROM domain for {domain_md}",
+        problem=f"Identity `{domain_md}` sends with the default MAIL FROM (amazonses.com).",
+        resource=f"SES identity {domain_md}", region=region,
         why="SPF then aligns to amazonses.com instead of your domain, so DMARC passes only via DKIM. "
             "A custom MAIL FROM gives a second aligned pass.",
         steps=[f"Set MAIL FROM to `{mail_from}` with behaviour UseDefaultValue on MX failure.",
@@ -168,44 +180,49 @@ def mail_from_brief(domain: str, region: str = "") -> str:
 
 
 def spf_brief(mail_from: str) -> str:
+    mail_from_md = _n(mail_from)
     return brief(
-        f"fix SPF for {mail_from}",
-        problem=f"The MAIL FROM domain `{mail_from}` has no SPF record that includes amazonses.com.",
-        resource=f"DNS TXT {mail_from}",
+        f"fix SPF for {mail_from_md}",
+        problem=f"The MAIL FROM domain `{mail_from_md}` has no SPF record that includes amazonses.com.",
+        resource=f"DNS TXT {mail_from_md}",
         why="SES's return-path servers are not authorised, so SPF fails and DMARC must rely on DKIM alone.",
-        steps=[f"Publish (or edit) the TXT record on `{mail_from}` so it includes `include:amazonses.com`."],
+        steps=[f"Publish (or edit) the TXT record on `{mail_from_md}` so it includes `include:amazonses.com`."],
         commands=[f"dig +short TXT {q(mail_from)}",
-                  f"# expected after the fix: \"v=spf1 include:amazonses.com ~all\" on {mail_from}"],
+                  f"# expected after the fix: \"v=spf1 include:amazonses.com ~all\" on {mail_from_md}"],
         verify=[f"`dig +short TXT {q(mail_from)}` returns a v=spf1 record containing include:amazonses.com."],
         rollback=["Restore the previous TXT value."],
     )
 
 
 def dmarc_brief(domain: str, finding: str) -> str:
-    rec = f"_dmarc.{domain}"
+    domain_md = _n(domain)
+    rec = f"_dmarc.{domain_md}"
     policy = {"missing": "has no DMARC record", "p=none": "has DMARC policy p=none (monitor only)",
               "no rua": "has DMARC without an rua= reporting address"}[finding]
     return brief(
-        f"strengthen DMARC for {domain}",
-        problem=f"`{domain}` {policy}.",
+        f"strengthen DMARC for {domain_md}",
+        problem=f"`{domain_md}` {policy}.",
         resource=f"DNS TXT {rec}",
         why="Gmail and Yahoo bulk-sender rules require DMARC. A p=none policy lets spoofed mail through, and "
             "without rua= you receive no aggregate reports showing who sends as your domain.",
-        steps=[f"Publish a TXT record on `{rec}`, starting with `v=DMARC1; p=none; rua=mailto:dmarc@{domain}` if none exists.",
+        steps=[f"Publish a TXT record on `{rec}`, starting with `v=DMARC1; p=none; rua=mailto:dmarc@{domain_md}` if none exists.",
                "After two weeks of clean aggregate reports, move to `p=quarantine`, then `p=reject`."],
         commands=[f"dig +short TXT {q(rec)}",
-                  f"# target: \"v=DMARC1; p=quarantine; rua=mailto:dmarc@{domain}; adkim=s; aspf=r\""],
+                  f"# target: \"v=DMARC1; p=quarantine; rua=mailto:dmarc@{domain_md}; adkim=s; aspf=r\""],
         verify=[f"`dig +short TXT {q(rec)}` returns the new record and the Authentication grid shows DMARC as pass."],
         rollback=["Lower the policy back to the previous value; never delete DMARC entirely."],
     )
 
 
 def threshold_brief(group: str, name: str, metric: str, rate: float, deliveries: int, line: float) -> str:
+    group_md = _n(group)
+    name_md = _n(name)
+    metric_md = _n(metric)
     return brief(
-        f"reduce the {metric} rate for {name}",
-        problem=f"{group} `{name}` has a {metric} rate of {rate * 100:.3f}% over {deliveries:,} deliveries, "
+        f"reduce the {metric_md} rate for {name_md}",
+        problem=f"{group_md} `{name_md}` has a {metric_md} rate of {rate * 100:.3f}% over {deliveries:,} deliveries, "
                 f"at or above the {line * 100:.2f}% line.",
-        resource=f"{group} {name}",
+        resource=f"{group_md} {name_md}",
         why="AWS reviews accounts at a 0.10% complaint or 5% bounce rate and can pause sending at 0.5% or 10%; "
             "mailbox providers throttle well before that.",
         steps=["Pull the recent complaint and bounce rows for this row from the dashboard's Records section (CSV).",
@@ -214,6 +231,6 @@ def threshold_brief(group: str, name: str, metric: str, rate: float, deliveries:
                "Suppress addresses that bounced or complained."],
         commands=["# export the ledger rows for review (read-only):",
                   "curl -s http://127.0.0.1:8787/api/report | jq '.complaint_records'"],
-        verify=[f"Within 7 days the {metric} rate for `{name}` is under {line * 100:.2f}% on the dashboard."],
+        verify=[f"Within 7 days the {metric_md} rate for `{name_md}` is under {line * 100:.2f}% on the dashboard."],
         rollback=["No AWS change is made by this brief."],
     )

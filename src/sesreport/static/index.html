@@ -130,7 +130,7 @@ select.search { cursor:pointer; max-width:100%; }
 .secnav a { flex:0 0 auto; text-decoration:none; color:var(--mut); font-size:12.5px; font-weight:500; padding:6px 12px; border-radius:20px; transition:color .15s ease, background .15s ease; }
 .secnav a:hover { color:var(--ink); background:var(--card); }
 .secnav a[aria-current="true"] { color:var(--ink); background:var(--card2); }
-.secnav .alertcount { display:inline-grid; place-items:center; min-width:17px; height:17px; padding:0 5px; margin-left:5px; border-radius:9px; font-size:10.5px; font-weight:600; background:color-mix(in srgb, var(--warn) 22%, transparent); color:var(--warn); }
+.secnav .alertcount { display:inline-grid; place-items:center; min-width:17px; height:17px; padding:0 5px; margin-left:5px; border-radius:9px; font-size:10.5px; font-weight:600; background:var(--warn); color:var(--card); }
 
 /* --------------------------------------------------------------- hero */
 .hero { display:grid; grid-template-columns:minmax(0,1.25fr) minmax(0,1fr); gap:16px; margin-top:18px; }
@@ -925,7 +925,7 @@ function attentionItems() {
       for (const g of group) items.push({sev:g.severity, ic:KIND_ICON[g.kind]||'alert', t:g.title, d:g.detail, fix:registerBrief(g.id, g.resource, g.brief)});
       continue;
     }
-    const names = group.map(g => g.resource);
+    const names = group.map(g => String(g.resource).replace(/`/g, "'").replace(/\s+/g, ' '));
     const list = names.length > 4 ? `${names.slice(0, 3).join(', ')} and ${names.length - 3} more` : names.join(', ');
     const label = {dkim:'DKIM is not passing', mail_from:'No custom MAIL FROM', spf:'SPF misses amazonses.com', dmarc:'DMARC needs work',
       routing:'Config sets do not route BOUNCE/COMPLAINT', publishing:'Config sets do not publish Delivery/Open/Click',
@@ -1290,6 +1290,7 @@ function mountProviders() {
   const host = document.getElementById('providersSection'); if (!host) return;
   const b = state.model.breakdowns;
   if (!b) { host.innerHTML = '<div class="box muted">Provider breakdowns appear after the next refresh.</div>'; return; }
+  if (b.state === 'unavailable') { host.innerHTML = `<div class="box errbox">${icon('alert')} Provider breakdowns could not be computed this refresh. See the collector warnings under Retention &amp; methodology.</div>`; return; }
   const w = b.ranges?.[state.range] || b.ranges?.all || {};
   const floor = fmtInt(b.floor || 1000);
   if (w.state === 'ledger_not_configured') {

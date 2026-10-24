@@ -214,6 +214,11 @@ def _counted_ts(kind: str, event: dict) -> str:
     return body.get("timestamp") or (event.get("mail") or {}).get("timestamp") or ""
 
 
+def _key(part: str) -> str:
+    """Percent-encode the key separator so a '#' in a name cannot shift fields."""
+    return part.replace("%", "%25").replace("#", "%23")
+
+
 def counters_for_event(event: dict, now: dt.datetime) -> list[dict]:
     """Counter increments for a Delivery, Open or Click event (pure).
 
@@ -237,7 +242,7 @@ def counters_for_event(event: dict, now: dt.datetime) -> list[dict]:
     return [
         {
             "pk": f"AGG#{ts.date().isoformat()}",
-            "sk": f"{domain}#{identity}#{config_set}#{COUNTED_EVENTS[kind]}",
+            "sk": f"{_key(domain)}#{_key(identity)}#{_key(config_set)}#{COUNTED_EVENTS[kind]}",
             "n": n,
             "ttl": ttl,
         }
@@ -252,9 +257,15 @@ def marker_for_event(event: dict, now: dt.datetime) -> dict | None:
     message_id = (event.get("mail") or {}).get("messageId") or ""
     if kind not in COUNTED_EVENTS or not message_id:
         return None
+    sk = COUNTED_EVENTS[kind]
+    if kind == "Delivery":
+        # SES may split one multi-recipient message into several Delivery events;
+        # each distinct recipient set counts once, a redelivery of the same set does not.
+        recips = ",".join(sorted((r or "").strip().lower() for r in _counted_recipients(kind, event)))
+        sk = f"{sk}#{hashlib.sha256(recips.encode('utf-8')).hexdigest()[:16]}"
     return {
         "pk": f"SEEN#{message_id}",
-        "sk": COUNTED_EVENTS[kind],
+        "sk": sk,
         "ttl": int(now.timestamp()) + MARKER_DAYS * 86400,
     }
 
@@ -278,8 +289,7 @@ def _count(event: dict, now: dt.datetime) -> int:
         except Exception as exc:  # noqa: BLE001
             if _is_conditional_failure(exc):
                 return 0  # already counted
-            log.warning("[ledger] marker put failed: %s", exc)
-            return 0
+            raise  # fail the invocation so SNS retries; the marker makes the retry safe
     done = 0
     for u in updates:
         try:
@@ -353,10 +363,8 @@ def handler(event, context):  # noqa: ARG001 - Lambda signature
 
         topic_name = (sns.get("TopicArn") or "").split(":")[-1]
         if _event_kind(ses_event) in COUNTED_EVENTS:
-            try:
-                written += _count(ses_event, dt.datetime.now(dt.timezone.utc))
-            except Exception as exc:  # noqa: BLE001
-                log.warning("[ledger] could not count event: %s", exc)
+            # errors propagate on purpose: SNS retries the delivery and the dedupe marker keeps it idempotent
+            written += _count(ses_event, dt.datetime.now(dt.timezone.utc))
             continue
         try:
             items = records_for_event(

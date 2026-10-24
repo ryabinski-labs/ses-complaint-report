@@ -10,12 +10,15 @@ Delivery/Open/Click publishing. Every finding carries a Markdown fix brief.
 
 from __future__ import annotations
 
+import time
+
 from . import fixbriefs
 
 COMPLAINT_LINES = ((0.0010, "high"), (0.0008, "medium"))
 BOUNCE_LINES = ((0.10, "high"), (0.05, "medium"))
 DNS_TIMEOUT_S = 2.0
 MAX_LOOKUPS = 120
+DNS_DEADLINE_S = 8.0  # all DNS work in one refresh, so slow nameservers cannot stall it
 PUBLISHED = ("DELIVERY", "OPEN", "CLICK")
 NOT_CHECKED_TIMEOUT = "not checked: DNS timeout"
 NOT_CHECKED_BUDGET = "not checked: lookup budget reached"
@@ -33,7 +36,8 @@ class DnsResolver:
     """Thin dnspython wrapper: ``txt``/``mx`` return strings, missing names
     return ``[]``, timeouts raise ``DnsTimeout``, and lookups are capped."""
 
-    def __init__(self, lifetime: float = DNS_TIMEOUT_S, max_lookups: int = MAX_LOOKUPS):
+    def __init__(self, lifetime: float = DNS_TIMEOUT_S, max_lookups: int = MAX_LOOKUPS,
+                 deadline_s: float = DNS_DEADLINE_S, clock=time.monotonic):
         import dns.resolver
 
         self._dns = dns
@@ -43,9 +47,15 @@ class DnsResolver:
         self.max_lookups = max_lookups
         self.lookups = 0
         self.timeouts = 0
+        self.deadline_s = deadline_s
+        self.clock = clock
+        self._started: float | None = None
 
     def _query(self, name: str, rtype: str):
-        if self.lookups >= self.max_lookups:
+        now = self.clock()
+        if self._started is None:
+            self._started = now
+        if self.lookups >= self.max_lookups or now - self._started >= self.deadline_s:
             raise DnsBudget(name)
         self.lookups += 1
         try:
