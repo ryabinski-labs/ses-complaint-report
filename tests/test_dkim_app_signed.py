@@ -29,9 +29,9 @@ def _dkim(findings):
 
 
 def test_app_signed_identity_passes_without_a_finding():
-    fs, checks = advisor.auth_findings([_ident("getbankinabox.com", "NOT_STARTED", "WebMail")], NoDns())
+    fs, checks = advisor.auth_findings([_ident("bank.example", "NOT_STARTED", "WebMail")], NoDns())
     assert _dkim(fs) == {}
-    assert checks["getbankinabox.com"]["dkim"] == "pass · signed by WebMail"
+    assert checks["bank.example"]["dkim"] == "pass · signed by WebMail"
 
 
 def test_app_signed_project_match_is_case_insensitive_and_configurable():
@@ -77,7 +77,7 @@ class _Ses:
         self.tags, self.sending = tags, sending
 
     def list_email_identities(self, **_kw):
-        return {"EmailIdentities": [{"IdentityName": "getbankinabox.com", "IdentityType": "DOMAIN",
+        return {"EmailIdentities": [{"IdentityName": "bank.example", "IdentityType": "DOMAIN",
                                      "SendingEnabled": self.sending, "VerificationStatus": "SUCCESS"}]}
 
     def get_email_identity(self, EmailIdentity):  # noqa: N803
@@ -102,7 +102,7 @@ def test_collector_reads_the_project_tag_from_get_email_identity(monkeypatch):
 
 def test_untagged_identity_is_kept(monkeypatch):
     (row,) = _collect(monkeypatch, _Ses(tags=False))
-    assert row["name"] == "getbankinabox.com" and row["project"] == ""
+    assert row["name"] == "bank.example" and row["project"] == ""
 
 
 def test_sending_comes_from_the_list_call(monkeypatch):
