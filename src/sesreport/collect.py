@@ -532,6 +532,13 @@ def _coverage_risk(name: str, routes: bool) -> str:
     return "medium"
 
 
+def _fmt_breakdown(breakdown) -> str:
+    """Human-readable `reason: count` list instead of a Python dict repr."""
+    if isinstance(breakdown, dict):
+        return ", ".join(f"{k}: {v}" for k, v in breakdown.items())
+    return str(breakdown)
+
+
 def build_suppression_coverage(
     config_sets: list[dict], sends: dict[str, int], complaint_events: dict[str, int]
 ) -> list[dict]:
@@ -968,7 +975,7 @@ def collect_all() -> dict:
                 "store": f"DynamoDB {s['table']} (reason=complaint)",
                 "complaints": s.get("complaints"),
                 "detail": f"{s.get('total')} total rows"
-                + (f" — {s.get('breakdown')}" if s.get("breakdown") else ""),
+                + (f" — {_fmt_breakdown(s.get('breakdown'))}" if s.get("breakdown") else ""),
             }
         )
     if CFG.complaint_queue:

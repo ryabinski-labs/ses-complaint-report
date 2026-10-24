@@ -57,7 +57,7 @@ test.describe('recipient-level complaint records (§4.2)', () => {
     }
   });
 
-  test('stays usable when it does scroll: pinned address column, edge fade, keyboard scroll', async ({ page, request }) => {
+  test('never scrolls sideways, even with long unbreakable content: cells wrap instead', async ({ page, request }) => {
     const model = await fetchModel(request);
     const rows = Array.from({ length: 6 }, (_, i) => ({
       email: `user${i}${unbreakable(40)}@${unbreakable(40)}.example.com`,
@@ -79,27 +79,13 @@ test.describe('recipient-level complaint records (§4.2)', () => {
     const box = page.locator(`${TABLE} .tablebox`);
     await expect(page.locator(`${TABLE} tbody tr`).first()).toBeVisible();
 
-    // Long unbreakable content forces the scroll path this narrow.
-    expect(await wrap.evaluate((w) => w.scrollWidth - w.clientWidth)).toBeGreaterThan(50);
-    await expect(box).toHaveClass(/more-right/);
-    await expect(wrap).toHaveAttribute('tabindex', '0');
-    await expect(wrap).toHaveAttribute('aria-label', /^Scrollable table/);
-
-    // Scrolling right keeps the recipient address pinned and shows the boundary.
-    const before = await page.locator(`${TABLE} tbody tr td:first-child`).first().boundingBox();
-    await wrap.evaluate((w) => { w.scrollLeft = 200; });
-    await expect(wrap).toHaveClass(/scrolled-x/);
-    const after = await page.locator(`${TABLE} tbody tr td:first-child`).first().boundingBox();
-    expect(Math.abs(after.x - before.x)).toBeLessThanOrEqual(2);
-
-    // The edge fade disappears at the far end.
-    await wrap.evaluate((w) => { w.scrollLeft = w.scrollWidth; });
+    // Long unbreakable content wraps inside its cell; the region never scrolls horizontally.
+    expect(await wrap.evaluate((w) => w.scrollWidth - w.clientWidth)).toBeLessThanOrEqual(1);
     await expect(box).not.toHaveClass(/more-right/);
-
-    // The focused region scrolls with the keyboard.
-    await wrap.evaluate((w) => { w.scrollLeft = 0; w.focus(); });
-    await page.keyboard.press('ArrowRight');
-    await expect.poll(() => wrap.evaluate((w) => w.scrollLeft), { timeout: 2000 }).toBeGreaterThan(0);
+    await expect(wrap).not.toHaveAttribute('aria-label', /^Scrollable table/);
+    const cell = await page.locator(`${TABLE} tbody tr td:first-child`).first().boundingBox();
+    expect(cell.height).toBeGreaterThan(30); // the address wrapped onto several lines
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(760);
   });
 
   test('renders labelled cards on a phone width with no page overflow', async ({ page }) => {

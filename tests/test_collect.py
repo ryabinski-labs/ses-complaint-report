@@ -73,3 +73,9 @@ def test_redaction_matches_the_ledger_formula(monkeypatch):
     spec.loader.exec_module(mod)
     for addr in ("alice@example.com", "a@x.com", "complaint@simulator.amazonses.com"):
         assert collect._maybe_redact(addr) == mod.redact(addr)
+
+
+def test_store_breakdown_is_human_readable():
+    # The stores table showed a raw Python dict repr ({'bounce': 42}).
+    assert collect._fmt_breakdown({"bounce": 42, "complaint": 3}) == "bounce: 42, complaint: 3"
+    assert collect._fmt_breakdown("custom") == "custom"
