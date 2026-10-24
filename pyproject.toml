@@ -1,6 +1,6 @@
 [project]
 name = "ses-complaint-report"
-version = "1.0.0"
+version = "1.1.0"
 description = "Self-hosted, refreshable dashboard for Amazon SES complaint and deliverability posture"
 readme = "README.md"
 license = { text = "MIT" }

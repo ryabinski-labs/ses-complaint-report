@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-10-24
+
 ### Changed
 
 - `SESREPORT_APP_DKIM_MX` now defaults to empty. It used to default to one
@@ -224,5 +226,6 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - CI: `oss_audit_gate.py` fails when the OSS readiness audits regress
   (vendored `opensource_audit` / `readme_audit` / `license_metadata_audit` / `workflow_audit`).
 
-[Unreleased]: https://github.com/ryabinski-labs/ses-complaint-report/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/ryabinski-labs/ses-complaint-report/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/ryabinski-labs/ses-complaint-report/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/ryabinski-labs/ses-complaint-report/releases/tag/v1.0.0

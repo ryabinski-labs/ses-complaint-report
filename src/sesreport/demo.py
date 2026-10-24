@@ -131,7 +131,7 @@ def demo_model(seed: int = 7) -> dict:
             "account": "000000000000",
             "region": "us-east-1",
             "profile": "demo",
-            "collector_version": "1.0.0",
+            "collector_version": "1.1.0",
             "redacted": False,
             "demo": True,
         },
