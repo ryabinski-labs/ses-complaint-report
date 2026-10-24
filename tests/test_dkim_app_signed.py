@@ -15,6 +15,9 @@ class NoDns:
     def txt(self, _name):
         return []
 
+    def mx(self, _name):
+        return []
+
 
 def _ident(name, status, project=""):
     return {"name": name, "type": "DOMAIN", "dkim_status": status, "project": project,
@@ -67,22 +70,20 @@ def test_default_app_dkim_projects(monkeypatch):
 
 
 class _Ses:
-    def __init__(self, tags_error=False):
-        self.tags_error = tags_error
+    """GetEmailIdentity already returns Tags (and no SendingEnabled: that field
+    only exists on the list call), so no ListTagsForResource round trip."""
+
+    def __init__(self, tags=True, sending=True):
+        self.tags, self.sending = tags, sending
 
     def list_email_identities(self, **_kw):
-        return {"EmailIdentities": [{"IdentityName": "getbankinabox.com", "IdentityType": "DOMAIN"}]}
+        return {"EmailIdentities": [{"IdentityName": "getbankinabox.com", "IdentityType": "DOMAIN",
+                                     "SendingEnabled": self.sending, "VerificationStatus": "SUCCESS"}]}
 
     def get_email_identity(self, EmailIdentity):  # noqa: N803
         return {"IdentityType": "DOMAIN", "DkimAttributes": {"Status": "NOT_STARTED"},
-                "VerifiedForSendingStatus": True, "SendingEnabled": True}
-
-    def list_tags_for_resource(self, ResourceArn):  # noqa: N803
-        if self.tags_error:
-            from botocore.exceptions import ClientError
-            raise ClientError({"Error": {"Code": "AccessDeniedException"}}, "ListTagsForResource")
-        assert ResourceArn == "arn:aws:ses:us-east-1:000000000000:identity/getbankinabox.com"
-        return {"Tags": [{"Key": "Project", "Value": "WebMail"}]}
+                "VerifiedForSendingStatus": True, "VerificationStatus": "SUCCESS",
+                "Tags": [{"Key": "Project", "Value": "WebMail"}] if self.tags else []}
 
 
 def _collect(monkeypatch, ses):
@@ -94,11 +95,17 @@ def _collect(monkeypatch, ses):
     return collect.collect_identities(collect.Errors())["rows"]
 
 
-def test_collector_reads_the_project_tag(monkeypatch):
+def test_collector_reads_the_project_tag_from_get_email_identity(monkeypatch):
     (row,) = _collect(monkeypatch, _Ses())
-    assert row["project"] == "WebMail"
+    assert row["project"] == "WebMail" and row["tags"] == {"Project": "WebMail"}
 
 
-def test_missing_tag_permission_keeps_the_identity(monkeypatch):
-    (row,) = _collect(monkeypatch, _Ses(tags_error=True))
+def test_untagged_identity_is_kept(monkeypatch):
+    (row,) = _collect(monkeypatch, _Ses(tags=False))
     assert row["name"] == "getbankinabox.com" and row["project"] == ""
+
+
+def test_sending_comes_from_the_list_call(monkeypatch):
+    # GetEmailIdentity has no SendingEnabled; reading it there showed "no" for every identity
+    assert _collect(monkeypatch, _Ses(sending=True))[0]["sending"] is True
+    assert _collect(monkeypatch, _Ses(sending=False))[0]["sending"] is False

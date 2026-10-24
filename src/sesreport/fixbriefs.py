@@ -48,41 +48,86 @@ def _region_flag(region: str) -> str:
     return f" --region {q(region)}" if region else ""
 
 
-def routing_brief(config_set: str, region: str = "") -> str:
+LEDGER_HINT = ("# the ledger's feedback topic is any topic the ledger Lambda subscribes to:",
+               "aws sns list-subscriptions --query \"Subscriptions[?contains(Endpoint,'ledger-ingest')].TopicArn\"")
+
+
+def _ledger_topic_lines(ledger_topics: list[str] | None) -> tuple[str, list[str]]:
+    """The topic ARN to use in a command, and the comment lines that explain it."""
+    if ledger_topics:
+        return ledger_topics[0], [f"# a topic the ledger already listens to: {_n(ledger_topics[0])}"]
+    return "LEDGER_TOPIC_ARN", ["# replace LEDGER_TOPIC_ARN with the ledger feedback topic ARN:", *LEDGER_HINT]
+
+
+def routing_brief(config_set: str, region: str = "", ledger_topics: list[str] | None = None,
+                  covered_by: list[str] | None = None, usage: str = "") -> str:
     config_set_md = _n(config_set)
-    dest = json.dumps({
-        "Enabled": True,
-        "MatchingEventTypes": ["BOUNCE", "COMPLAINT"],
-        "CloudWatchDestination": {"DimensionConfigurations": [{
-            "DimensionName": "ses:configuration-set", "DimensionValueSource": "messageTag",
-            "DefaultDimensionValue": config_set}]},
-    }, separators=(",", ":"))
+    topic, topic_lines = _ledger_topic_lines(ledger_topics)
+    dest = json.dumps({"Enabled": True, "MatchingEventTypes": ["BOUNCE", "COMPLAINT", "DELIVERY"],
+                       "SnsDestination": {"TopicArn": topic}}, separators=(",", ":"))
+    why = ("Complaints sent through this path never reach a feedback handler or the ledger, so ops cannot see "
+           "them and the per-provider rates have no numerator. SES still suppresses the address at account level.")
+    if covered_by:
+        why = (f"Mail from {', '.join(_n(c) for c in covered_by)} is already covered by identity-level "
+               "notifications, which fire whatever configuration set the message used. The gap only matters if "
+               "another identity sends through this set.")
+    elif usage == "idle":
+        why = "Nothing has used this set in the last 14 days, so this is a latent gap: it becomes real on the first send."
     return brief(
         f"route BOUNCE/COMPLAINT events for {config_set_md}",
-        problem=f"Configuration set `{config_set_md}` has no event destination for BOUNCE or COMPLAINT events.",
+        problem=f"Configuration set `{config_set_md}` has no enabled SNS or Firehose event destination for BOUNCE or "
+                "COMPLAINT events. A CloudWatch destination only counts them; nothing hears them.",
         resource=f"SES configuration set {config_set_md}", region=region,
-        why="Complaints sent through this path never reach the feedback handler or the per-config-set "
-            "CloudWatch metric, so ops cannot see them. SES still suppresses the address at account level.",
-        steps=["Add a CloudWatch event destination that matches BOUNCE and COMPLAINT.",
-               "If the ledger should also see these events, add an SNS destination to the ledger's feedback topic "
-               "(see the SNS subscriptions command below)."],
-        commands=[
-            "aws sesv2 create-configuration-set-event-destination" + _region_flag(region) + " \\",
-            f"  --configuration-set-name {q(config_set)} \\",
-            "  --event-destination-name feedback-to-cloudwatch \\",
-            f"  --event-destination {q(dest)}",
-            "# find the ledger's feedback topic (the one the ledger Lambda subscribes to):",
-            "aws sns list-subscriptions --query \"Subscriptions[?contains(Endpoint,'ledger')].TopicArn\"",
-        ],
+        why=why,
+        steps=["Add an SNS event destination on the ledger's feedback topic matching BOUNCE, COMPLAINT and DELIVERY "
+               "(DELIVERY gives the ledger its denominator).",
+               "If the sending app needs the events too, subscribe its handler to the same topic rather than "
+               "creating a second path."],
+        commands=[*topic_lines,
+                  "aws sesv2 create-configuration-set-event-destination" + _region_flag(region) + " \\",
+                  f"  --configuration-set-name {q(config_set)} \\",
+                  "  --event-destination-name feedback-to-ledger \\",
+                  f"  --event-destination {q(dest)}"],
         verify=[f"`aws sesv2 get-configuration-set-event-destinations --configuration-set-name {q(config_set)}` "
-                "lists BOUNCE and COMPLAINT.",
-                "On the next dashboard refresh the coverage grid shows ticks for BOUNCE and COMPLAINT."],
+                "lists BOUNCE, COMPLAINT and DELIVERY on an SNS destination.",
+                "On the next dashboard refresh the coverage grid shows this set as routed."],
         rollback=[f"`aws sesv2 delete-configuration-set-event-destination --configuration-set-name {q(config_set)} "
-                  "--event-destination-name feedback-to-cloudwatch`"],
+                  "--event-destination-name feedback-to-ledger`"],
     )
 
 
-def publishing_brief(config_set: str, missing: list[str], destination: dict | None, region: str = "") -> str:
+def ledger_gap_brief(config_set: str, feedback_topics: list[str], region: str = "") -> str:
+    config_set_md = _n(config_set)
+    topic = feedback_topics[0] if feedback_topics else "TOPIC_ARN"
+    return brief(
+        f"let the ledger see feedback for {config_set_md}",
+        problem=f"Configuration set `{config_set_md}` routes BOUNCE/COMPLAINT to "
+                f"{', '.join(_n(t) for t in feedback_topics) or 'a destination'}, but the ledger Lambda is not "
+                "subscribed there.",
+        resource=f"SES configuration set {config_set_md}", region=region,
+        why="The app that owns the topic hears the complaint, but the ledger does not, so this path has no "
+            "per-provider rates and its complaints are missing from the recipient-level records.",
+        steps=["Subscribe the ledger ingest Lambda to the set's feedback topic (the ledger stack already grants "
+               "SNS invoke for the whole account).",
+               "Check the topic's other subscribers tolerate nothing new: the subscription adds a reader, not events."],
+        commands=["LEDGER_ARN=$(aws lambda get-function --function-name ses-complaint-report-ledger-ingest"
+                  + _region_flag(region) + " --query Configuration.FunctionArn --output text)",
+                  f"aws sns subscribe --topic-arn {q(topic)} --protocol lambda --notification-endpoint \"$LEDGER_ARN\""
+                  + _region_flag(region)],
+        verify=[f"`aws sns list-subscriptions-by-topic --topic-arn {q(topic)}` lists the ledger Lambda.",
+                "The coverage grid shows the set as reaching the ledger on the next refresh."],
+        rollback=["`aws sns unsubscribe --subscription-arn <arn>` for the subscription created above."],
+    )
+
+
+def publishing_brief(config_set: str, missing: list[str], destination: dict | None, region: str = "",
+                     ledger_topics: list[str] | None = None, usage: str = "") -> str:
+    """Publish the missing event types to a ledger-subscribed topic.
+
+    ``destination`` is only passed when its topic already reaches the ledger;
+    an ops/alert topic must never be edited (every delivery would page someone),
+    so otherwise a new destination on a ledger topic is created.
+    """
     config_set_md = _n(config_set)
     missing = sorted(missing)
     engagement = any(m in ("OPEN", "CLICK") for m in missing)
@@ -94,43 +139,212 @@ def publishing_brief(config_set: str, missing: list[str], destination: dict | No
                 f"  --configuration-set-name {q(config_set)} \\",
                 f"  --event-destination-name {q(destination.get('name') or 'feedback-to-sns')} \\",
                 f"  --event-destination {q(dest)}"]
-        step = f"Add {', '.join(missing)} to the existing SNS destination `{destination.get('name')}`."
+        step = f"Add {', '.join(missing)} to the existing SNS destination `{_n(destination.get('name'))}`, which already feeds the ledger."
     else:
-        dest = json.dumps({"Enabled": True, "MatchingEventTypes": ["BOUNCE", "COMPLAINT", *missing],
-                           "SnsDestination": {"TopicArn": "LEDGER_TOPIC_ARN"}}, separators=(",", ":"))
-        cmds = ["# replace LEDGER_TOPIC_ARN with the ledger feedback topic ARN:",
-                "aws sns list-subscriptions --query \"Subscriptions[?contains(Endpoint,'ledger')].TopicArn\"",
+        topic, topic_lines = _ledger_topic_lines(ledger_topics)
+        types = sorted({"BOUNCE", "COMPLAINT", "DELIVERY", *missing})
+        dest = json.dumps({"Enabled": True, "MatchingEventTypes": types,
+                           "SnsDestination": {"TopicArn": topic}}, separators=(",", ":"))
+        cmds = [*topic_lines,
                 "aws sesv2 create-configuration-set-event-destination" + _region_flag(region) + " \\",
                 f"  --configuration-set-name {q(config_set)} \\",
                 "  --event-destination-name feedback-to-ledger \\",
                 f"  --event-destination {q(dest)}"]
-        step = "Create an SNS event destination on the ledger's feedback topic that matches the missing types."
+        step = ("Create a new SNS event destination on a ledger-subscribed topic. Do not add DELIVERY to an existing "
+                "ops/alert topic: its subscribers would be notified on every delivery.")
     steps = [step, "Wait for the next sends through this config set, then refresh the dashboard."]
     if engagement:
         steps.insert(0, TRACKING_NOTE)
+    why = ("The ledger counts deliveries to compute per-provider complaint and bounce rates. Without DELIVERY "
+           "events the Mailbox providers section has no denominator for sends through this path.")
+    if usage == "idle":
+        why += " Nothing used this set in the last 14 days, so this is a latent gap."
     return brief(
         f"publish {', '.join(missing)} events for {config_set_md}",
-        problem=f"Configuration set `{config_set_md}` does not publish {', '.join(missing)} events to the ledger.",
+        problem=f"Configuration set `{config_set_md}` does not publish {', '.join(missing)} events to a topic the ledger reads.",
         resource=f"SES configuration set {config_set_md}", region=region,
-        why="The ledger counts deliveries, opens and clicks to compute per-provider rates. Without these events "
-            "the Mailbox providers section has no denominator for sends through this path.",
+        why=why,
         steps=steps, commands=cmds,
         verify=[f"`aws sesv2 get-configuration-set-event-destinations --configuration-set-name {q(config_set)}` "
-                f"lists {', '.join(missing)}.",
+                f"lists {', '.join(missing)} on a ledger-subscribed topic.",
                 "Within a day the Mailbox providers section shows deliveries for this config set."],
         rollback=["Re-run the update with the previous MatchingEventTypes, or delete the destination created above."],
     )
 
 
-def identity_delivery_brief(identity: str, topic: str, region: str = "") -> str:
+def tracking_brief(config_set: str, destination: dict, types: list[str], region: str = "") -> str:
+    config_set_md = _n(config_set)
+    keep = sorted(t for t in (destination.get("event_types") or []) if t not in ("OPEN", "CLICK"))
+    dest = json.dumps({"Enabled": True, "MatchingEventTypes": keep,
+                       "SnsDestination": {"TopicArn": destination.get("sns")}}, separators=(",", ":"))
+    return brief(
+        f"confirm engagement tracking on {config_set_md}",
+        problem=f"Configuration set `{config_set_md}` publishes {', '.join(types)} events, so SES adds a tracking pixel"
+                + (" and rewrites every link through its redirect domain" if "CLICK" in types else "") + ".",
+        resource=f"SES configuration set {config_set_md}", region=region,
+        why="Link rewriting breaks magic links and signed URLs when the redirect host is blocked, and tracking "
+            "pixels are a privacy disclosure. This is a note, not a fault: keep it if engagement data is wanted here.",
+        steps=["Decide whether engagement tracking is intended for this path.",
+               f"If not, remove {', '.join(types)} from destination `{_n(destination.get('name'))}` (command below)."],
+        commands=["aws sesv2 update-configuration-set-event-destination" + _region_flag(region) + " \\",
+                  f"  --configuration-set-name {q(config_set)} \\",
+                  f"  --event-destination-name {q(destination.get('name') or '')} \\",
+                  f"  --event-destination {q(dest)}"],
+        verify=["Links in a test message are no longer rewritten through awstrack.me."],
+        rollback=["Re-run the update with the previous MatchingEventTypes."],
+    )
+
+
+def identity_feedback_gap_brief(identity: str, topic: str, subscribers: list[str], region: str = "") -> str:
     identity_md = _n(identity)
+    return brief(
+        f"give {identity_md}'s feedback a handler",
+        problem=f"Identity `{identity_md}` sends Bounce/Complaint notifications to `{_n(topic)}`, whose only "
+                f"subscribers are {', '.join(_n(s) for s in subscribers) or 'none'}. No handler or ledger reads it.",
+        resource=f"SES identity {identity_md}", region=region,
+        why="A complaint lands in an inbox and is never recorded, so the address keeps receiving mail from the app "
+            "and the complaint is missing from every rate on this dashboard.",
+        steps=["Subscribe the ledger ingest Lambda to the topic so every event is recorded.",
+               "If the sending app has a feedback endpoint, subscribe it too so it suppresses the address."],
+        commands=["LEDGER_ARN=$(aws lambda get-function --function-name ses-complaint-report-ledger-ingest"
+                  + _region_flag(region) + " --query Configuration.FunctionArn --output text)",
+                  f"aws sns subscribe --topic-arn {q(topic)} --protocol lambda --notification-endpoint \"$LEDGER_ARN\""
+                  + _region_flag(region)],
+        verify=[f"`aws sns list-subscriptions-by-topic --topic-arn {q(topic)}` lists the ledger Lambda."],
+        rollback=["`aws sns unsubscribe --subscription-arn <arn>` for the subscription created above."],
+    )
+
+
+def identity_unverified_brief(identity: str, status: str, region: str = "") -> str:
+    identity_md = _n(identity)
+    return brief(
+        f"re-verify or delete {identity_md}",
+        problem=f"Identity `{identity_md}` has verification status `{_n(status) or 'unknown'}`; SES will not send from it.",
+        resource=f"SES identity {identity_md}", region=region,
+        why="This is housekeeping, not a sending risk: SES already refuses mail from an unverified identity. "
+            "Authentication checks are skipped for it because none of them can apply.",
+        steps=["If the domain is still yours and should send, publish the DKIM CNAMEs SES asks for and wait for "
+               "re-verification.", "Otherwise delete the identity so it stops appearing here."],
+        commands=[f"aws sesv2 get-email-identity --email-identity {q(identity)}{_region_flag(region)} "
+                  "--query 'DkimAttributes.Tokens'",
+                  "# only if the domain is no longer used:",
+                  f"aws sesv2 delete-email-identity --email-identity {q(identity)}{_region_flag(region)}"],
+        verify=["The identity is SUCCESS, or gone from `aws sesv2 list-email-identities`."],
+        rollback=["Re-create the identity with `aws sesv2 create-email-identity` and verify it again."],
+    )
+
+
+def unattributed_sends_brief(identities: list[str], share: dict, region: str = "") -> str:
+    names = [_n(i) for i in identities]
+    first = identities[0] if identities else "IDENTITY"
+    return brief(
+        "give every sending identity a default configuration set",
+        problem=f"In the last {share.get('days', 14)} days {share.get('unattributed') or 0:,} of "
+                f"{share.get('account_sends') or 0:,} sends carried no configuration set, so no event destination "
+                f"saw their bounces or complaints. {len(names)} identities can send without one: {', '.join(names) or 'none'}.",
+        resource="SES account", region=region,
+        why="Feedback for those messages arrives only as forwarded email (if forwarding is on). It never reaches "
+            "a handler or the ledger, so the address is not suppressed by the app and the complaint is missing "
+            "from every rate here except SES's own.",
+        steps=["For each identity, set a default configuration set that routes BOUNCE, COMPLAINT and DELIVERY to a "
+               "ledger-subscribed topic. Sends that name a set explicitly are unaffected.",
+               "Alternatively, point the identity's own Bounce and Complaint notifications at such a topic."],
+        commands=["aws sesv2 put-email-identity-configuration-set-attributes" + _region_flag(region) + " \\",
+                  f"  --email-identity {q(first)} \\", "  --configuration-set-name CONFIG_SET_WITH_FEEDBACK",
+                  "# repeat for each identity listed above"],
+        verify=["On the next refresh the unattributed share in Needs attention falls, and `aws sesv2 get-email-identity` "
+                "shows a ConfigurationSetName for each identity."],
+        rollback=["`put-email-identity-configuration-set-attributes --email-identity <id>` with no set name removes the default."],
+    )
+
+
+def sns_pending_brief(topic: str, endpoints: list[str], region: str = "") -> str:
+    return brief(
+        f"confirm pending subscriptions on {_n(topic)}",
+        problem=f"Topic `{_n(topic)}` has unconfirmed subscriptions: {', '.join(_n(e) for e in endpoints)}. "
+                "They receive nothing until confirmed.",
+        resource=f"SNS topic {_n(topic)}", region=region,
+        why="A feedback handler that never confirmed its subscription silently misses every complaint.",
+        steps=["Have the endpoint confirm (an https endpoint receives a SubscriptionConfirmation POST; a Lambda "
+               "confirms automatically once it has invoke permission).", "Remove subscriptions nobody owns."],
+        commands=[f"aws sns list-subscriptions-by-topic --topic-arn {q(topic)}{_region_flag(region)}"],
+        verify=["No subscription on the topic shows `PendingConfirmation`."],
+        rollback=["None: this brief only confirms or removes subscriptions."],
+    )
+
+
+def dkim_key_brief(identity: str, region: str = "") -> str:
+    identity_md = _n(identity)
+    return brief(
+        f"rotate {identity_md} to a 2048-bit DKIM key",
+        problem=f"Identity `{identity_md}` signs with a 1024-bit RSA key.",
+        resource=f"SES identity {identity_md}", region=region,
+        why="1024-bit keys are below current guidance (RFC 8301 recommends 2048). Mail still passes today, so this "
+            "is a note.",
+        steps=["Ask SES for a 2048-bit key; SES publishes new tokens and keeps signing with the old key until "
+               "the new CNAMEs resolve.", "Publish the three new CNAMEs SES returns."],
+        commands=[f"aws sesv2 put-email-identity-dkim-signing-attributes --email-identity {q(identity)}"
+                  f"{_region_flag(region)} --signing-attributes-origin AWS_SES --signing-attributes NextSigningKeyLength=RSA_2048_BIT"],
+        verify=["`DkimAttributes.CurrentSigningKeyLength` is RSA_2048_BIT after the CNAMEs propagate."],
+        rollback=["Repeat with `NextSigningKeyLength=RSA_1024_BIT`."],
+    )
+
+
+def email_identity_brief(identity: str, region: str = "") -> str:
+    identity_md = _n(identity)
+    domain = identity.rsplit("@", 1)[-1]
+    return brief(
+        f"stop sending as {identity_md} through SES",
+        problem=f"`{identity_md}` is a verified email-address identity whose domain `{_n(domain)}` is not a verified "
+                "domain identity in this account.",
+        resource=f"SES identity {identity_md}", region=region,
+        why=f"SES cannot DKIM-sign for `{_n(domain)}` and the MAIL FROM is amazonses.com, so nothing aligns with the "
+            "From header: every message fails DMARC at the receiver. Fine for a test inbox, not for anything a user sees.",
+        steps=["Send only from domains this account owns and has verified.",
+               "Delete the address identity if it was only used for a sandbox test."],
+        commands=[f"aws sesv2 delete-email-identity --email-identity {q(identity)}{_region_flag(region)}"],
+        verify=["The identity no longer appears in `aws sesv2 list-email-identities`."],
+        rollback=[f"`aws sesv2 create-email-identity --email-identity {q(identity)}` and click the verification link."],
+    )
+
+
+def account_rate_brief(metric: str, rate: float, line: float) -> str:
+    metric_md = _n(metric)
+    name = "Reputation.ComplaintRate" if metric == "complaint" else "Reputation.BounceRate"
+    return brief(
+        f"bring the account {metric_md} rate down",
+        problem=f"SES's account-wide `{name}` is {rate * 100:.3f}%, at or above the {line * 100:.2f}% line.",
+        resource="SES account",
+        why=("This is the number AWS enforces on: it reviews accounts at 0.10% complaints or 5% bounces and can pause "
+             "sending at 0.5% or 10%. It only counts providers that send complaint feedback, so Gmail's complaints "
+             "are invisible here and the true rate may be higher."),
+        steps=["Open the Mailbox providers and Records sections to find which path and list source produced the "
+               "recent complaints or bounces.",
+               "Stop sending to that source; add double opt-in and a visible unsubscribe link.",
+               "Watch the rolling rate: it is a trailing average and takes days to fall."],
+        commands=["aws cloudwatch get-metric-statistics --namespace AWS/SES --metric-name " + name
+                  + " --statistics Average --period 86400 \\",
+                  "  --start-time $(date -u -v-14d +%Y-%m-%dT00:00:00Z 2>/dev/null || date -u -d '14 days ago' +%Y-%m-%dT00:00:00Z) "
+                  "--end-time $(date -u +%Y-%m-%dT00:00:00Z)"],
+        verify=[f"`{name}` is below {line * 100:.2f}% on the hero and the finding disappears."],
+        rollback=["No AWS change is made by this brief."],
+    )
+
+
+def identity_delivery_brief(identity: str, topic: str, region: str = "", others: list[str] | None = None) -> str:
+    identity_md = _n(identity)
+    steps = ["Point the identity's Delivery notifications at the same topic as its Complaint notifications."]
+    if others:
+        steps.insert(0, f"The topic's other subscribers ({', '.join(_n(o) for o in others)}) will receive a Delivery "
+                        "notification per message too. If they cannot take that volume, create a dedicated topic "
+                        "subscribed only by the ledger and use it below.")
     return brief(
         f"publish Delivery notifications for {identity_md}",
         problem=f"Identity `{identity_md}` sends Bounce and Complaint notifications to SNS but not Delivery notifications.",
         resource=f"SES identity {identity_md}", region=region,
         why="Sends made without a configuration set are only visible to the ledger through identity notifications. "
-            "Without Delivery notifications their rates have no denominator.",
-        steps=["Point the identity's Delivery notifications at the same topic as its Complaint notifications."],
+            "Without Delivery notifications their bounces and complaints have no denominator.",
+        steps=steps,
         commands=["aws ses set-identity-notification-topic" + _region_flag(region) + " \\",
                   f"  --identity {q(identity)} \\", "  --notification-type Delivery \\", f"  --sns-topic {q(topic)}"],
         verify=[f"`aws ses get-identity-notification-attributes --identities {q(identity)}` shows a DeliveryTopic."],
@@ -183,15 +397,23 @@ def dkim_unsigned_brief(identity: str, region: str = "") -> str:
     )
 
 
-def mail_from_brief(domain: str, region: str = "") -> str:
+def mail_from_brief(domain: str, region: str = "", status: str = "", configured: str = "",
+                    dkim_aligned: bool = True) -> str:
     domain_md = _n(domain)
-    mail_from = f"bounce.{domain_md}"
+    mail_from = configured or f"bounce.{domain_md}"
+    if configured and status and status != "SUCCESS":
+        problem = (f"Identity `{domain_md}` has MAIL FROM `{_n(configured)}` in status `{_n(status)}`, so SES falls back "
+                   "to amazonses.com.")
+    else:
+        problem = f"Identity `{domain_md}` sends with the default MAIL FROM (amazonses.com)."
+    why = ("SPF aligns to amazonses.com instead of your domain, so DMARC passes only via DKIM. "
+           + ("DKIM does align today, so this adds redundancy rather than fixing a failure."
+              if dkim_aligned else "Nothing DKIM-signs this domain either, so DMARC fails outright."))
     return brief(
         f"set a custom MAIL FROM domain for {domain_md}",
-        problem=f"Identity `{domain_md}` sends with the default MAIL FROM (amazonses.com).",
+        problem=problem,
         resource=f"SES identity {domain_md}", region=region,
-        why="SPF then aligns to amazonses.com instead of your domain, so DMARC passes only via DKIM. "
-            "A custom MAIL FROM gives a second aligned pass.",
+        why=why,
         steps=[f"Set MAIL FROM to `{mail_from}` with behaviour UseDefaultValue on MX failure.",
                f"Publish MX `{mail_from}` → `10 feedback-smtp.<region>.amazonses.com`.",
                f"Publish TXT `{mail_from}` → `\"v=spf1 include:amazonses.com ~all\"`."],
@@ -223,14 +445,18 @@ def dmarc_brief(domain: str, finding: str) -> str:
     domain_md = _n(domain)
     rec = f"_dmarc.{domain_md}"
     policy = {"missing": "has no DMARC record", "p=none": "has DMARC policy p=none (monitor only)",
-              "no rua": "has DMARC without an rua= reporting address"}[finding]
+              "no rua": "has DMARC without an rua= reporting address",
+              "invalid": "has a DMARC record with no valid p= policy (RFC 7489 §6.6.3: no policy applies)",
+              "multiple": "publishes more than one DMARC record, which receivers treat as none",
+              "pct": "applies its DMARC policy to only part of its mail (pct<100)"}[finding]
     return brief(
         f"strengthen DMARC for {domain_md}",
         problem=f"`{domain_md}` {policy}.",
         resource=f"DNS TXT {rec}",
         why="Gmail and Yahoo bulk-sender rules require DMARC. A p=none policy lets spoofed mail through, and "
             "without rua= you receive no aggregate reports showing who sends as your domain.",
-        steps=[f"Publish a TXT record on `{rec}`, starting with `v=DMARC1; p=none; rua=mailto:dmarc@{domain_md}` if none exists.",
+        steps=[f"Publish exactly one TXT record on `{rec}`, starting with `v=DMARC1; p=none; rua=mailto:dmarc@{domain_md}` "
+               "if none exists. Check the published value with dig: some DNS hosts cut TXT values at the first `;`.",
                "After two weeks of clean aggregate reports, move to `p=quarantine`, then `p=reject`."],
         commands=[f"dig +short TXT {q(rec)}",
                   f"# target: \"v=DMARC1; p=quarantine; rua=mailto:dmarc@{domain_md}; adkim=s; aspf=r\""],

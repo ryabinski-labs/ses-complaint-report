@@ -164,10 +164,10 @@ Read-only. SES v1 and v2 API operations share the IAM service prefix `ses:`
 sts:GetCallerIdentity
 ses:GetAccount
 ses:ListEmailIdentities, ses:GetEmailIdentity
-ses:ListConfigurationSets, ses:DescribeConfigurationSet
+ses:ListConfigurationSets, ses:DescribeConfigurationSet, ses:GetConfigurationSet
 ses:ListSuppressedDestinations
 ses:GetIdentityNotificationAttributes
-cloudwatch:GetMetricStatistics, cloudwatch:ListMetrics
+cloudwatch:GetMetricStatistics
 logs:DescribeLogGroups, logs:StartQuery, logs:GetQueryResults
 sns:ListTopics, sns:ListSubscriptionsByTopic
 sqs:GetQueueUrl, sqs:GetQueueAttributes
@@ -195,6 +195,11 @@ Copy `.env.example` to `.env` and edit:
 | `SESREPORT_COMPLAINT_QUEUE` | Complaint DLQ name (blank = skip) |
 | `SESREPORT_SUPPRESSION_TABLES` | Comma-separated app suppression tables to count |
 | `SESREPORT_LEDGER_TABLE` | Self-owned complaint ledger table (see infra/); blank = fall back to CloudWatch + app stores |
+| `SESREPORT_LEDGER_FUNCTION` | Ledger ingest Lambda name; an SNS topic with it subscribed counts as reaching the ledger (default `ses-complaint-report-ledger-ingest`) |
+| `SESREPORT_APP_DKIM_PROJECTS` | `Project` tag values whose identities are DKIM-signed by the app, not SES (default `WebMail`) |
+| `SESREPORT_APP_DKIM_MX` | MX hosts that mark a domain as app-signed when it predates tagging (default `inbound.wm.emcognito.com`) |
+| `SESREPORT_TEST_IDENTITIES` | Identities that only send QA mail: their auth gaps are notes. Labels like `qa`, `test`, `staging`, `dev` (not the TLD) count automatically |
+| `SESREPORT_ENGAGEMENT_TRACKING` | `true` makes missing OPEN/CLICK publishing a finding; off by default because tracking rewrites links |
 | `SESREPORT_REDACT_EMAILS` | Mask recipient addresses in the API payload |
 | `SESREPORT_DEMO` | Serve synthetic data instead of calling AWS |
 | `SESREPORT_HOST`, `SESREPORT_PORT` | Local bind address (default `127.0.0.1:8787`) |

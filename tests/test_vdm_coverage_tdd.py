@@ -193,7 +193,9 @@ def test_sc_003_a_rates_are_complaints_and_bounces_over_deliveries() -> None:
                                     classify=providers.classify)
     row = _by(b["providers"])["Yahoo"]
     assert row["complaint_rate"] == pytest.approx(0.0008)
-    assert row["bounce_rate"] == pytest.approx(0.015)
+    # a bounced message was never delivered: bounces divide by sends (deliveries + bounces), as SES does
+    assert row["bounce_rate"] == pytest.approx(300 / 20300)
+    assert row["sends"] == 20300
 
 
 def test_sc_003_b_rate_floor_at_1_000_deliveries_boundary() -> None:
@@ -201,7 +203,7 @@ def test_sc_003_b_rate_floor_at_1_000_deliveries_boundary() -> None:
     b = breakdowns.build_breakdowns([_c(DAY, "a.example", 999), _c(DAY, "b.example", 1000)],
                                     _rows(DAY, "a.example", "COMPLAINT", 1) + _rows(DAY, "b.example", "COMPLAINT", 1))
     r999, r1000 = _by(b["providers"])["a.example"], _by(b["providers"])["b.example"]
-    assert r999["complaint_rate"] is None and r999["rate_note"] == "too few deliveries"
+    assert r999["complaint_rate"] is None and r999["rate_note"] == "too few sends"
     assert r1000["complaint_rate"] == pytest.approx(0.001)
 
 
@@ -273,17 +275,29 @@ def test_sc_005_a_failed_dkim_becomes_a_high_finding() -> None:
     assert fs[0]["severity"] == "high" and fs[0]["resource"] == "b.example" and fs[0]["kind"] == "dkim" and fs[0]["brief"]
 
 
-def test_sc_006_a_missing_custom_mail_from_is_medium() -> None:
-    """SC-006-a: no custom MAIL FROM is medium."""
+def _sev_of(fs, kind, resource):
+    hits = [f["severity"] for f in fs if f["kind"] == kind and f["resource"] == resource]
+    return hits[0] if hits else None
+
+
+def test_sc_006_a_missing_custom_mail_from_is_a_note_when_dkim_aligns_and_high_when_nothing_does() -> None:
+    """SC-006-a: no custom MAIL FROM: DMARC still passes on an aligned DKIM, so it is info;
+    with no aligned DKIM either, nothing aligns and it is high."""
     fs, _ = advisor.auth_findings([_ident("c.example", mail_from="")], StubResolver(txt=_passing("c.example")))
-    assert any(f["kind"] == "mail_from" and f["severity"] == "medium" and f["resource"] == "c.example" for f in fs)
+    assert _sev_of(fs, "mail_from", "c.example") == "info"
+    fs, _ = advisor.auth_findings([_ident("c.example", mail_from="", dkim="NOT_STARTED")],
+                                  StubResolver(txt=_passing("c.example")))
+    assert _sev_of(fs, "mail_from", "c.example") == "high"
 
 
-def test_sc_006_b_mail_from_spf_without_amazonses_include_is_medium() -> None:
-    """SC-006-b: MAIL FROM SPF without include:amazonses.com is medium."""
+def test_sc_006_b_mail_from_spf_without_amazonses_include_follows_dkim_alignment() -> None:
+    """SC-006-b: MAIL FROM SPF without include:amazonses.com is info when DKIM aligns, high otherwise."""
     txt = _passing("d.example") | {"bounce.d.example": ["v=spf1 -all"]}
-    fs, _ = advisor.auth_findings([_ident("d.example")], StubResolver(txt=txt))
-    assert any(f["kind"] == "spf" and f["severity"] == "medium" and f["resource"] == "bounce.d.example" for f in fs)
+    fs, checks = advisor.auth_findings([_ident("d.example")], StubResolver(txt=txt))
+    assert _sev_of(fs, "spf", "bounce.d.example") == "info"
+    assert checks["d.example"]["spf"] == "fail: lacks include:amazonses.com"
+    fs, _ = advisor.auth_findings([_ident("d.example", dkim="NOT_STARTED")], StubResolver(txt=txt))
+    assert _sev_of(fs, "spf", "bounce.d.example") == "high"
 
 
 def test_sc_007_a_dmarc_decision_table() -> None:
@@ -295,11 +309,10 @@ def test_sc_007_a_dmarc_decision_table() -> None:
     txt["_dmarc.m3.example"] = ["v=DMARC1; p=quarantine"]
     txt["_dmarc.m4.example"] = ["v=DMARC1; p=reject; rua=mailto:r@x"]
     fs, _ = advisor.auth_findings([_ident(d) for d in doms], StubResolver(txt=txt))
-
-    def sev(d):
-        hits = [f["severity"] for f in fs if f["kind"] == "dmarc" and f["resource"] == d]
-        return hits[0] if hits else None
-    assert [sev(d) for d in doms] == ["high", "medium", "info", None]
+    assert [_sev_of(fs, "dmarc", d) for d in doms] == ["medium", "medium", "info", None]
+    # Gmail/Yahoo make DMARC mandatory at 5,000 messages a day: missing becomes high there
+    fs, _ = advisor.auth_findings([_ident(d) for d in doms], StubResolver(txt=txt), sent_24h=5000)
+    assert [_sev_of(fs, "dmarc", d) for d in doms] == ["high", "medium", "info", None]
 
 
 def test_sc_008_a_dns_timeout_is_not_a_finding() -> None:
@@ -333,8 +346,8 @@ def test_sc_009_a_complaint_threshold_boundaries() -> None:
 
 
 def test_sc_009_b_bounce_threshold_boundaries() -> None:
-    """SC-009-b: 499, 500, 1,000 bounces per 10,000 → none, medium, high."""
-    assert [_sev(_row("p.example", 10000, bounces=k), "bounce_rate") for k in (499, 500, 1000)] == [None, "medium", "high"]
+    """SC-009-b: 499, 500, 1,000 bounces per 10,000 sends → none, medium, high (sends = deliveries + bounces)."""
+    assert [_sev(_row("p.example", 10000 - k, bounces=k), "bounce_rate") for k in (499, 500, 1000)] == [None, "medium", "high"]
 
 
 def test_sc_009_c_floor_suppresses_threshold_findings() -> None:
@@ -408,14 +421,22 @@ def test_sc_011_b_open_and_click_rates_use_deliveries_as_denominator() -> None:
 
 
 # --------------------------------------------------------------------- REQ-012 publishing gaps
-def test_sc_012_a_config_set_missing_delivery_open_click_is_flagged() -> None:
-    """SC-012-a: BOUNCE/COMPLAINT-only config set → finding listing DELIVERY, OPEN, CLICK, brief updates the destination."""
-    cs = [{"name": "transactional", "event_types": ["BOUNCE", "COMPLAINT"],
+def test_sc_012_a_config_set_missing_delivery_is_flagged_open_click_only_by_policy() -> None:
+    """SC-012-a: BOUNCE/COMPLAINT-only config set → finding for DELIVERY. OPEN/CLICK are off by policy
+    (link rewriting), so they are listed only when engagement tracking is configured. The brief edits the
+    existing destination only when its topic already feeds the ledger."""
+    cs = [{"name": "transactional", "event_types": ["BOUNCE", "COMPLAINT"], "feedback_topics": ["arn:aws:sns:us-east-1:0:fb"],
            "destinations": [{"name": "to-sns", "sns": "arn:aws:sns:us-east-1:0:fb", "event_types": ["BOUNCE", "COMPLAINT"]}]}]
-    (f,) = advisor.publishing_findings(cs, [])
-    assert f["resource"] == "transactional" and set(f["missing"]) == {"DELIVERY", "OPEN", "CLICK"}
-    assert "update-configuration-set-event-destination" in f["brief"]
-    assert "tracking pixel" in f["brief"]
+    topics = [{"name": "fb", "arn": "arn:aws:sns:us-east-1:0:fb", "ledger_subscribed": True, "consumers": [], "subscribers": []}]
+    (f,) = advisor.publishing_findings(cs, [], sns_topics=topics)
+    assert f["resource"] == "transactional" and f["missing"] == ["DELIVERY"]
+    assert "update-configuration-set-event-destination" in f["brief"] and "tracking pixel" not in f["brief"]
+    (f,) = advisor.publishing_findings(cs, [], sns_topics=topics, engagement_tracking=True)
+    assert set(f["missing"]) == {"DELIVERY", "OPEN", "CLICK"} and "tracking pixel" in f["brief"]
+    # an ops/alert topic must never be edited: every delivery would page someone
+    ops = [{**topics[0], "ledger_subscribed": False, "subscribers": [{"protocol": "email", "endpoint": "ops@x"}]}]
+    (f,) = advisor.publishing_findings(cs, [], sns_topics=ops)
+    assert "create-configuration-set-event-destination" in f["brief"] and "update-configuration" not in f["brief"]
 
 
 def test_sc_012_b_identity_topic_without_delivery_notifications_is_an_info_finding() -> None:

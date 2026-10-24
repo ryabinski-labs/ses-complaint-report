@@ -58,6 +58,17 @@ class Config:
     # app before SES (Folio/WebMail signs in-app), so SES's own DKIM status
     # is expected to be NOT_STARTED for them.
     app_dkim_projects: list[str] = field(default_factory=lambda: ["WebMail"])
+    # Domains whose MX points at one of these hosts are served by an in-app
+    # signer too (Folio/WebMail inbound), for identities that predate tagging.
+    app_dkim_mx: list[str] = field(default_factory=lambda: ["inbound.wm.emcognito.com"])
+    # Identities that only send QA/test mail: auth gaps there are notes, not risks.
+    test_identities: list[str] = field(default_factory=list)
+    # Open/click tracking rewrites links; it is off by policy unless this is set,
+    # so missing OPEN/CLICK publishing is never a finding by default.
+    engagement_tracking: bool = False
+    # The ledger ingest Lambda's function name: an SNS topic with a lambda
+    # subscription ending in this is "ledger-subscribed".
+    ledger_function: str = "ses-complaint-report-ledger-ingest"
     redact_emails: bool = False
     demo: bool = False
     host: str = "127.0.0.1"
@@ -81,6 +92,10 @@ def load() -> Config:
         suppression_tables=_split(os.environ.get("SESREPORT_SUPPRESSION_TABLES", "")),
         ledger_table=os.environ.get("SESREPORT_LEDGER_TABLE", ""),
         app_dkim_projects=_split(os.environ.get("SESREPORT_APP_DKIM_PROJECTS", "WebMail")),
+        app_dkim_mx=_split(os.environ.get("SESREPORT_APP_DKIM_MX", "inbound.wm.emcognito.com")),
+        test_identities=_split(os.environ.get("SESREPORT_TEST_IDENTITIES", "")),
+        engagement_tracking=_bool("SESREPORT_ENGAGEMENT_TRACKING", False),
+        ledger_function=os.environ.get("SESREPORT_LEDGER_FUNCTION", "ses-complaint-report-ledger-ingest"),
         redact_emails=_bool("SESREPORT_REDACT_EMAILS", False),
         demo=_bool("SESREPORT_DEMO", False),
         host=os.environ.get("SESREPORT_HOST", "127.0.0.1"),

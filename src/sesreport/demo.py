@@ -10,6 +10,7 @@ import random
 
 from . import advisor as _advisor
 from . import breakdowns as _breakdowns
+from . import collect as _collect
 from .providers import classify as _classify
 
 
@@ -84,9 +85,11 @@ def demo_model(seed: int = 7) -> dict:
     _sim = sum(1 for r in complaint_records if r["simulator"])
     attribution = {
         "cloudwatch_recorded": total_complaints,
+        "real_cloudwatch": total_complaints - 2,
         "records": len(complaint_records),
         "real_records": len(complaint_records) - _sim,
         "simulator_records": _sim,
+        "simulator_hits": 2,
         "ledger_records": 0,
         "store_records": len(complaint_records),
         "latest_record": complaint_records[0]["last_seen"] if complaint_records else None,
@@ -100,19 +103,24 @@ def demo_model(seed: int = 7) -> dict:
         }
     ]
 
-    config_sets = [
-        {
-            "name": name,
-            "event_types": types,
-            "destinations": [{"name": "feedback-to-sns", "enabled": True, "sns": f"arn:aws:sns:us-east-1:000000000000:{name}-feedback"}],
-            "forwards_feedback": "COMPLAINT" in types,
+    def _cs(name, types, enabled=True):
+        arn = f"arn:aws:sns:us-east-1:000000000000:{name}-feedback"
+        dest = [{"name": "feedback-to-sns", "enabled": True, "type": "sns", "sns": arn, "event_types": types}] if types else []
+        return {
+            "name": name, "sending_enabled": enabled, "suppressed_reasons": None, "reputation_metrics": True,
+            "event_types": types, "engagement_types": [t for t in types if t in ("OPEN", "CLICK")],
+            "destinations": dest,
+            "feedback_topics": [arn] if any(t in ("BOUNCE", "COMPLAINT") for t in types) else [],
+            "delivery_topics": [arn] if "DELIVERY" in types else [],
+            "forwards_feedback": any(t in ("BOUNCE", "COMPLAINT") for t in types),
         }
-        for name, types in [
-            ("transactional", ["BOUNCE", "COMPLAINT", "DELIVERY", "REJECT"]),
-            ("marketing", ["BOUNCE", "COMPLAINT"]),
-            ("engagement-open", ["OPEN"]),
-            ("public-feedbackform", []),
-        ]
+
+    config_sets = [
+        _cs("transactional", ["BOUNCE", "COMPLAINT", "DELIVERY", "REJECT"]),
+        _cs("marketing", ["BOUNCE", "COMPLAINT"]),
+        _cs("engagement-open", ["OPEN"]),
+        _cs("public-feedbackform", []),
+        _cs("legacy-prod", [], enabled=False),
     ]
 
     deliverability = _demo_deliverability(rng, today, config_sets)
@@ -140,23 +148,28 @@ def demo_model(seed: int = 7) -> dict:
         "metrics": {
             "window": {
                 "start": by_day[0]["date"],
-                "end": by_day[-1]["date"],
+                "end": today.date().isoformat(),
                 "retention_start": (today - dt.timedelta(days=days)).date().isoformat(),
                 "retention_end": today.date().isoformat(),
                 "days": days,
+                "window_days": (today.date() - dt.date.fromisoformat(by_day[0]["date"])).days + 1,
             },
             "total_complaints": total_complaints,
             "total_sends": 766163,
+            "window_sends": 153331,
             "total_bounces": 1961,
-            "overall_complaint_rate": total_complaints / 766163,
+            "overall_complaint_rate": total_complaints / 153331,
             "complaints_by_day": by_day,
-            "sends_by_day": [],
+            "sends_by_day": [{"date": (today - dt.timedelta(days=b)).date().isoformat(), "count": 700 + (b * 37) % 300}
+                             for b in range(60, -1, -1)],
             "bounces_by_day": [],
             "rate_series": rate_series,
             "peak_rate": max(rate_series, key=lambda r: r["rate"]),
             "latest_rate": rate_series[-1],
-            "aws_review_line": 0.001,
-            "alert_line": 0.0009,
+            "bounce_rate_series": [{"date": r["date"], "rate": 0.0027} for r in rate_series],
+            "latest_bounce_rate": {"date": rate_series[-1]["date"], "rate": 0.0027},
+            "aws_review_line": _advisor.COMPLAINT_LINES[0][0],
+            "alert_line": _advisor.COMPLAINT_LINES[1][0],
         },
         "config_set_complaints": config_set_complaints,
         "complainants": complainants,
@@ -170,51 +183,50 @@ def demo_model(seed: int = 7) -> dict:
             "newest": None,
         },
         "unattributed": [
-            {"domain": "outlook.de", "feedback_type": "abuse", "events": 1},
-            {"domain": "comcast.net", "feedback_type": "abuse", "events": 1},
+            {"kind": "complaint", "domain": "outlook.de", "feedback_type": "abuse", "events": 1},
+            {"kind": "complaint", "domain": "comcast.net", "feedback_type": "abuse", "events": 1},
+            {"kind": "bounce", "domain": "gmail.com", "feedback_type": "Permanent", "events": 8},
         ],
         "log_groups": ["/aws/lambda/demo-api"],
         "stores": [
             {"store": "DynamoDB accounts (bounce_type=Complaint)", "complaints": 8, "detail": "exact address + ARF provider + timestamp"},
             {"store": "DynamoDB suppressions (reason=complaint)", "complaints": 0, "detail": "42 total rows — bounce: 42"},
-            {"store": "SQS complaint-recovery (retained raw feedback)", "complaints": 0, "detail": "governance-controlled DLQ; bodies not read"},
-            {"store": "CloudWatch Logs /aws/lambda/demo-api (7-day retention)", "complaints": 0, "detail": "unattributed feedback events, last 7 days"},
+            {"store": "SQS complaint-recovery (SNS delivery DLQ)", "complaints": None, "detail": "0 undelivered notification(s) waiting, 0 in flight; bodies not read"},
+            {"store": "CloudWatch Logs /aws/lambda/demo-api (7-day retention)", "complaints": 2, "detail": "10 unattributed feedback event(s) in the last 7 days (8 bounces)"},
         ],
         "config_sets": config_sets,
-        "suppression_coverage": [
-            {"config_set": "transactional", "routes_feedback": True, "event_types": ["BOUNCE", "COMPLAINT"], "destinations": 1, "sends": 3553, "complaints": 8, "risk": "ok"},
-            {"config_set": "marketing", "routes_feedback": True, "event_types": ["BOUNCE", "COMPLAINT"], "destinations": 1, "sends": None, "complaints": 0, "risk": "ok"},
-            {"config_set": "engagement-open", "routes_feedback": False, "event_types": ["OPEN"], "destinations": 1, "sends": None, "complaints": 0, "risk": "medium"},
-            {"config_set": "public-feedbackform", "routes_feedback": False, "event_types": [], "destinations": 0, "sends": None, "complaints": 0, "risk": "high"},
-        ],
+        "suppression_coverage": _collect.build_suppression_coverage(
+            config_sets,
+            {"transactional": {"sends": 3553, "sends_recent": 420, "last_send": today.date().isoformat(), "complaints": 8},
+             "marketing": {"sends": 1200, "sends_recent": 90, "last_send": today.date().isoformat(), "complaints": None},
+             "engagement-open": {"sends": 60, "sends_recent": 9, "last_send": today.date().isoformat(), "complaints": None},
+             "public-feedbackform": {"sends": 40, "sends_recent": 1, "last_send": today.date().isoformat(), "complaints": None},
+             "legacy-prod": {"sends": 0, "sends_recent": 0, "last_send": None, "complaints": None}},
+            _DEMO_TOPICS, _DEMO_IDENTITY_FEEDBACK),
         "identities": {
             "verified": 38,
             "failed": 6,
             "pending": 0,
             "rows": [
                 {"name": f"send{i}.example.com", "type": "DOMAIN",
-                 "dkim_status": "FAILED" if i >= 34 else "NOT_STARTED" if i < 4 else "SUCCESS", "verified": i < 34, "sending": i < 34,
+                 "dkim_status": "FAILED" if i >= 34 else "NOT_STARTED" if i < 4 else "SUCCESS",
+                 "dkim_signing": 4 <= i < 34, "dkim_key_length": "RSA_1024_BIT" if i == 6 else "RSA_2048_BIT",
+                 "verified": i < 34, "verification_status": "SUCCESS" if i < 34 else "FAILED", "sending": i < 34,
                  "mail_from_domain": "" if i in (3, 7) else f"bounce.send{i}.example.com",
                  "mail_from_status": "" if i in (3, 7) else "SUCCESS",
+                 "default_config_set": "transactional" if i == 0 else "", "feedback_forwarding": True,
                  # send0-2 sign in-app (WebMail) and send3 is unsigned by SES with no app tag
-                 "project": "WebMail" if i < 3 else ""}
+                 "project": "WebMail" if i < 3 else "", "tags": {"Project": "WebMail"} if i < 3 else {}}
                 for i in range(40)
             ],
-            "other_regions": [{"region": "us-west-2", "count": 1, "names": ["mail.demo.example"]}],
+            "sending": 34,
+            "verified_not_sending": 0,
+            "other_regions": [{"region": "us-west-2", "count": 1, "names": ["mail.demo.example"],
+                               "production_access": False, "suppressed_reasons": []}],
         },
-        "identity_feedback": [
-            {
-                "identity": "send0.example.com",
-                "bounce_topic": "arn:aws:sns:us-east-1:000000000000:feedback-topic",
-                "complaint_topic": "arn:aws:sns:us-east-1:000000000000:feedback-topic",
-                "forwarding_enabled": False,
-            }
-        ],
-        "sns_topics": [
-            {"name": "feedback-topic", "arn": "arn:aws:sns:us-east-1:000000000000:feedback-topic",
-             "subscribers": [{"protocol": "lambda", "endpoint": "arn:aws:lambda:us-east-1:000000000000:function:parse-feedback"}]}
-        ],
-        "complaint_queue": {"name": "complaint-recovery", "visible": 0, "in_flight": 0, "retention_s": 604800, "kms": True},
+        "identity_feedback": _DEMO_IDENTITY_FEEDBACK,
+        "sns_topics": _DEMO_TOPICS,
+        "complaint_queue": {"name": "complaint-recovery", "visible": 0, "in_flight": 0, "delayed": 0, "retention_s": 604800, "kms": True},
         "suppression_list": {
             "total": 93,
             "by_reason": {"BOUNCE": 85, "COMPLAINT": 8},
@@ -235,6 +247,30 @@ def demo_model(seed: int = 7) -> dict:
         "errors": [],
         "collect_ms": 12,
     }
+
+
+_LEDGER_FN = "arn:aws:lambda:us-east-1:000000000000:function:ses-complaint-report-ledger-ingest"
+_DEMO_TOPICS = [
+    {"name": "feedback-topic", "arn": "arn:aws:sns:us-east-1:000000000000:feedback-topic",
+     "subscribers": [{"protocol": "lambda", "endpoint": "arn:aws:lambda:us-east-1:000000000000:function:parse-feedback", "pending": False},
+                     {"protocol": "lambda", "endpoint": _LEDGER_FN, "pending": False}],
+     "ledger_subscribed": True, "consumers": ["arn:aws:lambda:us-east-1:000000000000:function:parse-feedback"], "pending": []},
+    {"name": "transactional-feedback", "arn": "arn:aws:sns:us-east-1:000000000000:transactional-feedback",
+     "subscribers": [{"protocol": "lambda", "endpoint": _LEDGER_FN, "pending": False}],
+     "ledger_subscribed": True, "consumers": [], "pending": []},
+    {"name": "marketing-feedback", "arn": "arn:aws:sns:us-east-1:000000000000:marketing-feedback",
+     "subscribers": [{"protocol": "https", "endpoint": "https://api.demo.example/ses", "pending": False}],
+     "ledger_subscribed": False, "consumers": ["https://api.demo.example/ses"], "pending": []},
+    {"name": "notify-me", "arn": "arn:aws:sns:us-east-1:000000000000:notify-me",
+     "subscribers": [{"protocol": "email", "endpoint": "ops@demo.example", "pending": False}],
+     "ledger_subscribed": False, "consumers": [], "pending": []},
+]
+_DEMO_IDENTITY_FEEDBACK = [
+    {"identity": "send0.example.com", "bounce_topic": _DEMO_TOPICS[0]["arn"], "complaint_topic": _DEMO_TOPICS[0]["arn"],
+     "delivery_topic": None, "forwarding_enabled": False},
+    {"identity": "send9.example.com", "bounce_topic": _DEMO_TOPICS[3]["arn"], "complaint_topic": _DEMO_TOPICS[3]["arn"],
+     "delivery_topic": None, "forwarding_enabled": True},
+]
 
 
 class _DemoResolver:
@@ -300,9 +336,14 @@ def _demo_deliverability(rng: random.Random, today: dt.datetime, config_sets: li
 
 def _with_advisor(model: dict) -> dict:
     window = model["breakdowns"]["ranges"]["30"]
+    unattributed = _collect.unattributed_sends(model["metrics"], model["suppression_coverage"])
     model["advisor"] = _advisor.run(identities=model["identities"]["rows"], coverage=model["suppression_coverage"],
                                     config_sets=model["config_sets"], identity_feedback=model["identity_feedback"],
-                                    window=window, resolver=_DemoResolver(), region=model["meta"]["region"])
+                                    window=window, resolver=_DemoResolver(), region=model["meta"]["region"],
+                                    sns_topics=model["sns_topics"], unattributed=unattributed,
+                                    account_rates={"complaint": model["metrics"]["latest_rate"]["rate"],
+                                                   "bounce": model["metrics"]["latest_bounce_rate"]["rate"]})
+    model["advisor"]["unattributed_sends"] = unattributed
     return model
 
 

@@ -8,12 +8,20 @@ from sesreport import collect
 from sesreport.collect import _day, _is_simulator, _iso
 
 
-def test_day_uses_wall_clock_not_utc():
-    # CloudWatch publishes these buckets in local time; a 20:00-04:00 bucket is
-    # still that same day, not the next day in UTC.
+def test_day_uses_utc_like_cloudwatch_and_the_ledger():
+    # CloudWatch daily buckets, the ledger's ``day`` and the SES console are all
+    # UTC. Labelling by local time put every winter day one day early on a
+    # BST machine (a 2025-11-24 UTC bounce showed as 2025-11-23).
     tz = dt.timezone(dt.timedelta(hours=-4))
-    d = dt.datetime(2026, 9, 15, 20, 0, tzinfo=tz)
-    assert _day(d) == "2026-09-15"
+    d = dt.datetime(2026, 9, 15, 20, 0, tzinfo=tz)  # 00:00 UTC on the 16th
+    assert _day(d) == "2026-09-16"
+    assert _day(dt.datetime(2026, 9, 15, 23, 59, tzinfo=dt.timezone.utc)) == "2026-09-15"
+
+
+def test_aligned_window_ends_at_utc_midnight():
+    start, end = collect._aligned_window(3)
+    assert end.tzinfo == dt.timezone.utc and (end.hour, end.minute) == (0, 0)
+    assert (end - start).days == 3
 
 
 def test_day_of_plain_date():
