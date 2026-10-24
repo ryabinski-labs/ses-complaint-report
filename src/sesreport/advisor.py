@@ -19,6 +19,7 @@ Fidelity rules, each learnt from a false positive or negative in production:
 
 from __future__ import annotations
 
+import datetime as dt
 import re
 import time
 from collections.abc import Iterable
@@ -671,6 +672,11 @@ def run(*, identities: list[dict], coverage: list[dict], config_sets: list[dict]
         findings += account_findings(account_rates.get("complaint"), account_rates.get("bounce"))
     if window:
         findings += threshold_findings(window, floor)
+    # every check above ran in this collection, so one timestamp covers them and
+    # lets the UI say when a finding was last observed rather than implying it is live
+    checked_at = dt.datetime.now(dt.timezone.utc).isoformat()
+    for f in findings:
+        f.setdefault("checked_at", checked_at)
     findings.sort(key=lambda f: (RANK.get(f["severity"], 3), f["kind"], f["resource"]))
     return {"findings": findings, "checks": checks,
             "dns": {"lookups": getattr(resolver, "lookups", 0), "timeouts": getattr(resolver, "timeouts", 0)}}

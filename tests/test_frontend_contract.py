@@ -9,6 +9,7 @@ referenced in index.html (or vice versa).
 
 from __future__ import annotations
 
+import datetime as dt
 import re
 from pathlib import Path
 
@@ -117,6 +118,16 @@ def test_attribution_counts_are_self_consistent():
     a = _model()["attribution"]
     assert a["records"] == a["ledger_records"] + a["store_records"]
     assert a["real_records"] + a["simulator_records"] == a["records"]
+
+
+def test_advisor_findings_carry_checked_at():
+    """The UI prints "checked <time>" beside each finding, so each must be dated."""
+    findings = _model()["advisor"]["findings"]
+    assert findings
+    missing = [f["id"] for f in findings if not f.get("checked_at")]
+    assert not missing, f"Advisor findings without checked_at: {missing}"
+    for f in findings:
+        dt.datetime.fromisoformat(f["checked_at"])  # must parse as ISO-8601
 
 
 def test_dashboard_has_accessibility_hooks():

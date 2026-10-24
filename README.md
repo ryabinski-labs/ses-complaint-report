@@ -177,7 +177,9 @@ dynamodb:Query           # the ledger table (daily delivery/open/click counters)
 ```
 
 The Advisor also makes public DNS lookups (MX, TXT for SPF and DMARC) with a
-2-second timeout, at most 120 per refresh, cached for 7 days. VDM APIs
+2-second per-lookup timeout, a 10-second total budget and at most 160 lookups
+per refresh. DMARC, SPF and DKIM records are queried fresh on every refresh;
+only the MX host→provider classification is cached, for 7 days. VDM APIs
 (`BatchGetMetricData`, `ListRecommendations`) are never called.
 
 ## Configure
