@@ -17,7 +17,7 @@ test.describe('REQ-003 — Mailbox providers table, Range-scoped, with the 1,000
     expect(await rows.count()).toBeGreaterThanOrEqual(3);
     const head = await page.locator('#providerTable thead').innerText();
     for (const col of ['DELIVERIES', 'COMPLAINTS', 'COMPLAINT RATE', 'BOUNCES', 'BOUNCE RATE']) expect(head.toUpperCase()).toContain(col);
-    await expect(page.locator('#providerTable')).toContainText('too few deliveries');
+    await expect(page.locator('#providerTable')).toContainText('too few sends');
     const firstDeliveries = async () => (await page.locator('#providerTable tbody tr:first-child td:nth-child(2)').innerText()).trim();
     const all = await firstDeliveries();
     await page.click('[data-range="30"]');

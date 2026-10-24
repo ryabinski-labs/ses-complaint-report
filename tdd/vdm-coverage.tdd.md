@@ -114,13 +114,13 @@
 - **Test doubles:** stub resolver; real filesystem (tmp_path); injected clock
 - **Test:** `tests/test_vdm_coverage_tdd.py::test_sc_002_d_mx_results_are_cached_for_7_days_in_the_data_directory`
 
-### REQ-003 — The Mailbox providers table shows deliveries, complaints, complaint rate, permanent bounces and bounce rate per provider for the selected Range, sorted by deliveries, with rates only at or above 1,000 deliveries.
+### REQ-003 — The Mailbox providers table shows deliveries, complaints, complaint rate (per delivery), permanent bounces and bounce rate (per send, i.e. deliveries + bounces, as SES computes it) per provider for the selected Range, sorted by deliveries, with rates only at or above 1,000 sends. Numerators start no earlier than the first Delivery counter so a window never puts old bounces over new deliveries (fidelity audit 2026-10-24).
 
 **Priority:** P0 · **Type:** functional · **PRD:** §5 story 2; DL-007; DL-008
 
-#### SC-003-a — Rates are complaints and bounces over deliveries  `unit` `green`
+#### SC-003-a — Rates are complaints over deliveries and bounces over sends  `unit` `green`
 
-- **Given** provider Yahoo with 20,000 deliveries, 16 complaints and 300 permanent bounces
+- **Given** provider Yahoo with 20,000 deliveries, 16 complaints and 300 permanent bounces (20,300 sends)
 - **When** build_breakdowns runs
 - **Then** complaint_rate is 0.0008 and bounce_rate is 0.015
 - **Oracle:** row.complaint_rate == 0.0008 AND row.bounce_rate == 0.015
@@ -132,8 +132,8 @@
 
 - **Given** providers with 999 and 1,000 deliveries and 1 complaint each
 - **When** build_breakdowns runs
-- **Then** the 999 row has rates None with reason "too few deliveries"; the 1,000 row has complaint_rate 0.001
-- **Oracle:** r999.complaint_rate is None AND r999.rate_note == "too few deliveries" AND r1000.complaint_rate == 0.001
+- **Then** the 999 row has rates None with reason "too few sends"; the 1,000 row has complaint_rate 0.001
+- **Oracle:** r999.complaint_rate is None AND r999.rate_note == "too few sends" AND r1000.complaint_rate == 0.001
 - **Test doubles:** none
 - **Test:** `tests/test_vdm_coverage_tdd.py::test_sc_003_b_rate_floor_at_1_000_deliveries_boundary`
 
@@ -159,8 +159,8 @@
 
 - **Given** the dashboard in demo mode
 - **When** the page loads and the Range is switched from All to 30d
-- **Then** a Mailbox providers section lists providers with the five columns, at least one row reads "too few deliveries", and the numbers change with the Range
-- **Oracle:** locator("#providers tbody tr").count() >= 3 AND text("#providers") contains "too few deliveries" AND deliveries(All) != deliveries(30d)
+- **Then** a Mailbox providers section lists providers with the five columns, at least one row reads "too few sends", and the numbers change with the Range
+- **Oracle:** locator("#providers tbody tr").count() >= 3 AND text("#providers") contains "too few sends" AND deliveries(All) != deliveries(30d)
 - **Test doubles:** none — real app in demo mode (tests/ui webServer)
 - **Test:** `tests/ui/vdm-coverage.tdd.spec.mjs --grep SC-003-e`
 
@@ -190,29 +190,29 @@
 - **Test doubles:** DNS resolver stub returning passing SPF/DMARC so only DKIM varies
 - **Test:** `tests/test_vdm_coverage_tdd.py::test_sc_005_a_failed_dkim_becomes_a_high_finding`
 
-### REQ-006 — The Advisor raises a medium finding for a sending domain without a custom MAIL FROM or whose MAIL FROM SPF TXT lacks include:amazonses.com.
+### REQ-006 — The Advisor raises a finding for a sending domain without a custom MAIL FROM or whose MAIL FROM SPF TXT lacks include:amazonses.com - info when DKIM already aligns (DMARC still passes), high when nothing aligns. A MAIL FROM whose status is not SUCCESS is reported as falling back to amazonses.com instead of having its SPF checked (fidelity audit 2026-10-24 - 4 mediums were redundancy notes, not failures).
 
 **Priority:** P0 · **Type:** functional · **PRD:** §5 story 4 criterion 2; DL-006
 
-#### SC-006-a — Missing custom MAIL FROM is medium  `unit` `green`
+#### SC-006-a — Missing custom MAIL FROM follows DKIM alignment  `unit` `green`
 
-- **Given** identity c.example with no MailFromAttributes.MailFromDomain
+- **Given** identity c.example with no MailFromAttributes.MailFromDomain, once with DKIM SUCCESS and once NOT_STARTED and unsigned
 - **When** auth_findings runs
-- **Then** one medium finding of kind mail_from names c.example
-- **Oracle:** any(f.kind=="mail_from" and f.severity=="medium" and f.resource=="c.example" for f in fs)
+- **Then** the mail_from finding is info when DKIM aligns and high when nothing aligns
+- **Oracle:** sev("mail_from","c.example") == "info" with DKIM SUCCESS; == "high" with DKIM NOT_STARTED
 - **Test doubles:** DNS stub
-- **Test:** `tests/test_vdm_coverage_tdd.py::test_sc_006_a_missing_custom_mail_from_is_medium`
+- **Test:** `tests/test_vdm_coverage_tdd.py::test_sc_006_a_missing_custom_mail_from_is_a_note_when_dkim_aligns_and_high_when_nothing_does`
 
-#### SC-006-b — MAIL FROM SPF without amazonses include is medium  `unit` `green`
+#### SC-006-b — MAIL FROM SPF without amazonses include follows DKIM alignment  `unit` `green`
 
 - **Given** identity d.example with MAIL FROM bounce.d.example whose TXT is "v=spf1 -all"
 - **When** auth_findings runs
-- **Then** one medium finding of kind spf names bounce.d.example
-- **Oracle:** any(f.kind=="spf" and f.severity=="medium" and f.resource=="bounce.d.example" for f in fs)
+- **Then** the spf finding on bounce.d.example is info when DKIM aligns and high otherwise; the grid says why
+- **Oracle:** sev("spf","bounce.d.example") == "info" | "high"; checks["d.example"]["spf"] == "fail: lacks include:amazonses.com"
 - **Test doubles:** DNS stub
-- **Test:** `tests/test_vdm_coverage_tdd.py::test_sc_006_b_mail_from_spf_without_amazonses_include_is_medium`
+- **Test:** `tests/test_vdm_coverage_tdd.py::test_sc_006_b_mail_from_spf_without_amazonses_include_follows_dkim_alignment`
 
-### REQ-007 — The Advisor checks DMARC per sending domain - missing record high, p=none medium, missing rua info.
+### REQ-007 — The Advisor checks DMARC per sending domain via the DMARCbis tree walk (never a public suffix) - missing record medium (high at or above 5,000 sends/day, the Gmail/Yahoo bulk line; info for QA/test identities), a record with no valid p= medium, p=none medium, pct<100 or missing rua info. An inherited record is read through sp=.
 
 **Priority:** P0 · **Type:** functional · **PRD:** §5 story 4 criterion 3; DL-006
 
@@ -220,7 +220,7 @@
 
 - **Given** domains with no _dmarc TXT, with "v=DMARC1; p=none; rua=mailto:r@x", with "v=DMARC1; p=quarantine", and with "v=DMARC1; p=reject; rua=mailto:r@x"
 - **When** auth_findings runs
-- **Then** severities are high, medium, info, and no finding respectively
+- **Then** severities are medium, medium, info, and no finding respectively; with sent_24h at the bulk line the missing record is high
 - **Oracle:** [sev(d) for d in doms] == ["high","medium","info",None]
 - **Test doubles:** DNS stub
 - **Test:** `tests/test_vdm_coverage_tdd.py::test_sc_007_a_dmarc_decision_table`
@@ -262,7 +262,7 @@
 
 #### SC-009-b — Bounce threshold boundaries  `unit` `green`
 
-- **Given** rows of 10,000 deliveries with 499, 500, 1,000 permanent bounces
+- **Given** rows of 10,000 sends (deliveries + bounces) with 499, 500, 1,000 permanent bounces
 - **When** threshold_findings runs
 - **Then** severities are none, medium, high
 - **Oracle:** [sev(r) for r in rows] == [None,"medium","high"]
@@ -349,18 +349,18 @@
 - **Test doubles:** none — demo mode
 - **Test:** `tests/ui/vdm-coverage.tdd.spec.mjs --grep SC-011-c`
 
-### REQ-012 — Config sets and identity topics that do not publish Delivery, Open or Click events produce findings with fix briefs.
+### REQ-012 — Enabled config sets that do not publish Delivery events to a ledger-subscribed topic, and identity topics without Delivery notifications, produce findings with fix briefs. Open/Click are off by policy (link rewriting) and only count when engagement tracking is configured; a brief never edits a destination whose topic does not already feed the ledger (fidelity audit 2026-10-24 - 15 OPEN/CLICK mediums were false positives and one brief would have paged ops on every delivery).
 
 **Priority:** P0 · **Type:** functional · **PRD:** §5 story 8; DL-003
 
-#### SC-012-a — Config set missing DELIVERY/OPEN/CLICK is flagged  `unit` `green`
+#### SC-012-a — Config set missing DELIVERY is flagged; OPEN/CLICK only by policy  `unit` `green`
 
-- **Given** config set transactional with event types BOUNCE, COMPLAINT only
-- **When** publishing_findings runs
-- **Then** one finding names transactional and lists DELIVERY, OPEN, CLICK as missing, with a brief that adds them to the existing destination
-- **Oracle:** f.resource == "transactional" AND set(f.missing) == {"DELIVERY","OPEN","CLICK"} AND "update-configuration-set-event-destination" in f.brief
+- **Given** config set transactional with event types BOUNCE, COMPLAINT on a ledger-subscribed topic; the same on an email-only ops topic
+- **When** publishing_findings runs with and without engagement tracking
+- **Then** missing is [DELIVERY] by default and adds OPEN, CLICK only with tracking on; the brief updates the destination only when its topic feeds the ledger, otherwise creates a new one
+- **Oracle:** f.missing == ["DELIVERY"]; with engagement_tracking set(f.missing) == {"DELIVERY","OPEN","CLICK"}; "update-configuration-set-event-destination" in brief iff topic.ledger_subscribed
 - **Test doubles:** none
-- **Test:** `tests/test_vdm_coverage_tdd.py::test_sc_012_a_config_set_missing_delivery_open_click_is_flagged`
+- **Test:** `tests/test_vdm_coverage_tdd.py::test_sc_012_a_config_set_missing_delivery_is_flagged_open_click_only_by_policy`
 
 #### SC-012-b — Identity topic without Delivery notifications is an info finding  `unit` `green`
 

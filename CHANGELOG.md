@@ -63,6 +63,56 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Fidelity audit of every finding and number** (2026-10-24; four read-only
+  audits against live AWS, DNS and the sending apps' code). False positives
+  removed: SES's DKIM status only says whether *SES* signs, so identities whose
+  app signs (Project tag or MX on `SESREPORT_APP_DKIM_MX`) pass instead of
+  raising 11 highs; unverified identities get one housekeeping note and no auth
+  findings (they cannot send); a missing MAIL FROM or weak SPF is a note when
+  DKIM already aligns; a disabled configuration set is never a gap; a set whose
+  only plausible senders route feedback through identity-level topics, or that
+  sent nothing in 14 days, is a note; OPEN/CLICK publishing is off by policy and
+  no longer a finding; the identity "Sending" column read `no` for every
+  identity (`GetEmailIdentity` has no such field). False negatives added: SES's
+  own `Reputation.ComplaintRate`/`BounceRate` against the same lines as the
+  ledger rows (0.092% was above the 0.08% line with nothing shown); a DMARC
+  record with no valid `p=` (truncated at the first `;` by some DNS hosts), more
+  than one record, `pct<100`, and inherited policies read through `sp=`, with
+  the DMARCbis tree walk instead of a last-two-labels guess; a strict SPF check
+  (one record, whole-token include, a real `all`); configuration sets that
+  route feedback to a handler the ledger never sees, and CloudWatch-only
+  destinations no longer count as routing; identity topics with no handler or
+  ledger (email-only); the share of sends that carried no configuration set;
+  unconfirmed SNS subscriptions; 1024-bit DKIM keys; address identities that
+  cannot align DMARC; tracking that is switched on (as a note).
+- **Numbers.** Days are UTC, like CloudWatch, the ledger and the SES console
+  (local-midnight alignment labelled every winter day one day early). The
+  "overall complaint rate" divided five months of complaints by 455 days of
+  sends; it now uses the sends from the same window and is labelled "complaints
+  per send", not SES's enforcement rate. Per-config-set complaints and sends are
+  read for every set by name (`ListMetrics` hid anything older than 14 days:
+  8 complaints on one set showed as 0), with SES's reputation metrics as the
+  usage fallback. Ledger breakdowns count numerators only from the first day
+  deliveries were counted, bounce rates divide by sends (deliveries + bounces)
+  as SES does, and "30 days" is 30 days. Only COMPLAINT ledger rows appear as
+  complainants (20 bounce rows were listed as "real complainants"). The
+  unattributed-feedback Logs Insights query parses the handler's plain-text
+  lines (it matched nothing before). The simulator note counts events, not
+  addresses. The SQS row is labelled as the SNS delivery DLQ it is.
+- **Ledger ingest.** The sort key is `<eventType>#<messageId>`, so the
+  config-set and identity copies of one event (timestamps a second apart)
+  write one row, and the copy that knows the configuration set wins. Sender
+  display names are parsed (`"Name" <x@wm.emcognito.com>` was stored as
+  `wm.emcognito.com>`). The reader dedupes rows written by the old key.
+- **Fix briefs** no longer propose adding DELIVERY to an ops/alert topic or to
+  an email-only identity topic; they create a dedicated ledger-subscribed
+  destination instead, and routing briefs create an SNS destination (a
+  CloudWatch destination hears nothing).
+- **Needs attention** gains account-posture rules (sending paused, suppression
+  reasons, quota, a DLQ with messages, verified identities with sending
+  disabled, a region with suppression off) and treats an unreadable enforcement
+  status as unknown rather than "At risk".
+
 - README IAM list used a non-existent `sesv2:` prefix; SES v2 actions are authorised as `ses:` (#23).
 - **Security (from QA of the redesign):**
   - Table cells now render API values as text, so values such as a crafted recipient address or ARF string can no longer inject markup or script into the page. Attribute values and date fallbacks are escaped too.

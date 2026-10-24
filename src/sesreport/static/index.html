@@ -581,7 +581,7 @@ function toCsv(rows, columns) {
 }
 function buildMarkdown() {
   const m = state.model, met = m.metrics, p = m.posture, sl = m.suppression_list || {};
-  const gaps = (m.suppression_coverage||[]).filter(c=>!c.routes_feedback);
+  const gaps = (m.suppression_coverage||[]).filter(c=>!c.routes_feedback && c.sending_enabled !== false);
   const L = [];
   L.push(`# SES Complaint Report — account ${m.meta.account}`);
   L.push('');
@@ -589,7 +589,7 @@ function buildMarkdown() {
   L.push('');
   L.push('## Summary');
   L.push(`- Recorded complaints: **${met.total_complaints}** (${met.window.start} → ${met.window.end})`);
-  L.push(`- Overall complaint rate: **${fmtPct(met.overall_complaint_rate)}** of ${fmtInt(met.total_sends)} sends (${met.window.days}-day volume)`);
+  L.push(`- Complaints per send (all providers, not SES's rate): **${fmtPct(met.overall_complaint_rate)}** — ${fmtInt(met.total_complaints)} of ${fmtInt(met.window_sends ?? met.total_sends)} sends since ${met.window.start}`);
   L.push(`- Peak rolling rate: **${met.peak_rate?fmtPct(met.peak_rate.rate)+' ('+met.peak_rate.date+')':'—'}** vs AWS review line 0.10%`);
   L.push(`- Enforcement status: **${p.enforcement_status}**`);
   L.push(`- Complaints on SES suppression list: **${sl.complaints ?? '—'}** of ${sl.total ?? '—'} entries (no expiry)`);
@@ -652,8 +652,10 @@ function routingFixId(cs) {
   const f = (state.model.advisor?.findings || []).find(x => x.kind === 'routing' && x.resource === cs);
   return f ? registerBrief(f.id, f.resource, f.brief) : registerBrief(`routing:${cs}`, cs, routingBriefJs(cs));
 }
-const KIND_ICON = {dkim:'shield', mail_from:'route', spf:'shield', dmarc:'shield', routing:'route', publishing:'activity',
-  identity_delivery:'server', complaint_rate:'alert', bounce_rate:'alert'};
+const KIND_ICON = {dkim:'shield', dkim_unsigned:'shield', dkim_key_length:'shield', mail_from:'route', spf:'shield', dmarc:'shield',
+  routing:'route', ledger_gap:'database', publishing:'activity', tracking:'activity', identity_delivery:'server',
+  identity_feedback_gap:'server', identity_unverified:'server', identity_email_only:'server', unattributed_sends:'layers',
+  sns_pending:'route', complaint_rate:'alert', bounce_rate:'alert'};
 
 /* ------------------------------------------------------------------ tooltip */
 const tipEl = () => document.getElementById('tip');
@@ -803,7 +805,7 @@ function makeTable({columns, rows, search=true, height=null, filters=[], csv=nul
 /* ------------------------------------------------------------------ derived numbers */
 function thresholds() {
   const met = state.model.metrics;
-  return { review: met.aws_review_line || 0.001, alert: met.alert_line || 0.0009 };
+  return { review: met.aws_review_line || 0.001, alert: met.alert_line || 0.0008 };
 }
 function rateLevel(rate) {
   const {review, alert} = thresholds();
@@ -835,16 +837,19 @@ function renderHero() {
   const {review, alert} = thresholds();
   const latest = met.latest_rate?.rate, peak = met.peak_rate?.rate;
   const enf = p.enforcement_status || 'UNKNOWN';
-  const level = enf !== 'HEALTHY' ? 'bad' : rateLevel(latest);
+  // UNKNOWN means the posture collector failed, not that AWS flagged the account
+  const flagged = enf !== 'HEALTHY' && enf !== 'UNKNOWN';
+  const level = flagged ? 'bad' : rateLevel(latest);
   const pctOf = latest != null ? Math.round(latest / review * 100) : null;
   const status = level === 'ok' ? ['Healthy', 'check'] : level === 'warn' ? ['Watch closely', 'alert'] : ['At risk', 'alert'];
-  const headline = enf !== 'HEALTHY'
+  const headline = flagged
     ? `AWS enforcement status is <em>${esc(enf)}</em>. Sending reputation needs attention now.`
+    : enf === 'UNKNOWN' ? `Enforcement status could not be read this refresh (see collector warnings)${latest != null ? `; the rolling complaint rate is at <em>${pctOf}%</em> of AWS's review line` : ''}.`
     : latest == null ? 'No rolling complaint rate was published for this window.'
     : level === 'ok' ? `The rolling complaint rate sits at <em>${pctOf}%</em> of AWS's review line.`
     : level === 'warn' ? `The rolling complaint rate is past the internal alert line, at <em>${pctOf}%</em> of AWS's review line.`
     : `The rolling complaint rate is <em>over</em> AWS's review line (${pctOf}%).`;
-  const per = met.total_complaints ? Math.round(met.total_sends / met.total_complaints) : null;
+  const per = met.total_complaints && met.window_sends ? Math.round(met.window_sends / met.total_complaints) : null;
 
   // threshold rail: zones split at the alert and review lines, latest as a disc, peak as a ring
   const max = Math.max(review * 1.4, (peak || 0) * 1.05, (latest || 0) * 1.05);
@@ -868,7 +873,7 @@ function renderHero() {
       <h2>${headline}</h2>
       <div class="hero-fig">
         <div class="big">${latest!=null?(latest*100).toFixed(4):'—'}<small>%</small></div>
-        <div class="cap">rolling complaint rate (<code>Reputation.ComplaintRate</code>)${per?` · about 1 complaint per ${fmtInt(per)} messages overall`:''}</div>
+        <div class="cap">rolling complaint rate (<code>Reputation.ComplaintRate</code>, providers that send feedback; Gmail does not)${per?` · about 1 recorded complaint per ${fmtInt(per)} sends since ${fmtDate(met.window.start)}`:''}</div>
       </div>
       ${rail}
     </div>
@@ -885,7 +890,8 @@ function tile({label, value, unit='', sub='', ic='', cls='', extra='', spark=''}
 function renderTiles() {
   const m = state.model, met = m.metrics, sl = m.suppression_list, q = m.posture.send_quota || {};
   const prev = prevSnapshot();
-  const fwd = m.config_sets.filter(c=>c.forwards_feedback).length, csN = m.config_sets.length;
+  const live = m.config_sets.filter(c=>c.sending_enabled!==false), offN = m.config_sets.length - live.length;
+  const fwd = live.filter(c=>c.forwards_feedback).length, csN = live.length;
   const quotaPct = q.max_24h ? q.sent_24h / q.max_24h : null;
   const qcls = quotaPct == null ? '' : quotaPct >= .9 ? 'bad' : quotaPct >= .75 ? 'warn' : '';
   const reasons = sl?.by_reason || {};
@@ -895,13 +901,13 @@ function renderTiles() {
   return `<div class="tiles">
     ${tile({label:'Recorded complaints', ic:'flame', value:fmtInt(met.total_complaints) + (prev?dnum(met.total_complaints, prev.total_complaints):''),
       sub:`${fmtDate(met.window.start)} → ${fmtDate(met.window.end)}`, spark:monthSpark(met.complaints_by_day||[])})}
-    ${tile({label:'Overall complaint rate', ic:'activity', value:fmtPct(met.overall_complaint_rate),
-      sub:`${fmtInt(met.total_complaints)} of ${fmtInt(met.total_sends)} sends · ${met.window.days} days`})}
+    ${tile({label:'Complaints per send', ic:'activity', value:fmtPct(met.overall_complaint_rate),
+      sub:`${fmtInt(met.total_complaints)} of ${fmtInt(met.window_sends ?? met.total_sends)} sends since ${fmtDate(met.window.start)} · all providers, not SES's enforcement rate`})}
     ${tile({label:'On SES suppression list', ic:'database', value:sl?fmtInt(sl.complaints):'—', unit:sl?`complaints of ${fmtInt(sl.total)}`:'',
       sub:sl?`never expire${prev&&prev.suppression_complaints!=null?' · '+dnum(sl.complaints, prev.suppression_complaints):''}`:'not collected', extra:slBar})}
-    ${tile({label:'Feedback routing', ic:'route', value:`${fwd}<span class="unit">/ ${csN} config sets</span>`, cls:fwd<csN?'':'ok',
-      sub:fwd<csN?`${plural(csN-fwd,'config set')} without a COMPLAINT destination`:'every config set routes COMPLAINT',
-      extra:`<div class="meter" aria-hidden="true">${m.config_sets.map(c=>`<i class="${c.forwards_feedback?'':'gap'}" style="flex:1"></i>`).join('')}</div>`})}
+    ${tile({label:'Feedback routing', ic:'route', value:`${fwd}<span class="unit">/ ${csN} live config sets</span>`, cls:fwd<csN?'':'ok',
+      sub:fwd<csN?`${plural(csN-fwd,'config set')} with no SNS/Firehose destination for BOUNCE/COMPLAINT${offN?` · ${plural(offN,'set')} disabled`:''}`:`every live config set routes BOUNCE/COMPLAINT to a handler${offN?` · ${plural(offN,'set')} disabled`:''}`,
+      extra:`<div class="meter" aria-hidden="true">${live.map(c=>`<i class="${c.forwards_feedback?'':'gap'}" style="flex:1"></i>`).join('')}</div>`})}
     ${tile({label:'Send quota (24 h)', ic:'wave', value:quotaPct!=null?`${(quotaPct*100).toFixed(1)}%`:'—',
       sub:`${fmtInt(q.sent_24h)} of ${fmtInt(q.max_24h)} · ${q.rate ?? '—'} msg/s`,
       extra:quotaPct!=null?`<div class="meter ${qcls}" aria-hidden="true"><i style="width:${Math.max(1.5, quotaPct*100).toFixed(1)}%"></i></div>`:''})}
@@ -912,14 +918,28 @@ function renderTiles() {
 
 /* ------------------------------------------------------------------ needs attention */
 function attentionItems() {
-  const m = state.model, met = m.metrics, items = [];
+  const m = state.model, met = m.metrics, p = m.posture || {}, items = [];
   const {review, alert} = thresholds();
-  if (m.posture.enforcement_status && m.posture.enforcement_status !== 'HEALTHY')
-    items.push({sev:'high', ic:'shield', t:`AWS enforcement status is ${m.posture.enforcement_status}`, d:'AWS has flagged this account. Review the Reputation dashboard in the SES console before sending more.'});
-  if (met.latest_rate?.rate >= review)
+  // account posture: these change colours elsewhere but never made the list
+  if (p.enforcement_status && p.enforcement_status !== 'HEALTHY' && p.enforcement_status !== 'UNKNOWN')
+    items.push({sev:'high', ic:'shield', t:`AWS enforcement status is ${p.enforcement_status}`, d:'AWS has flagged this account. Review the Reputation dashboard in the SES console before sending more.'});
+  if (p.sending_enabled === false)
+    items.push({sev:'high', ic:'shield', t:'Account sending is paused', d:'SES is not sending any mail from this account. Check the SES console for the reason and the re-enable path.'});
+  const sup = p.suppressed_reasons || [];
+  if (p.enforcement_status && !sup.includes('COMPLAINT'))
+    items.push({sev:'high', ic:'database', t:'Account-level suppression does not cover complaints', d:'A recipient who presses “spam” keeps receiving mail unless every app suppresses them itself.'});
+  if (p.enforcement_status && !sup.includes('BOUNCE'))
+    items.push({sev:'medium', ic:'database', t:'Account-level suppression does not cover bounces', d:'Hard-bounced addresses keep being retried, which raises the bounce rate AWS reviews on.'});
+  const q = p.send_quota || {}, quotaPct = q.max_24h ? q.sent_24h / q.max_24h : null;
+  if (quotaPct != null && quotaPct >= .75)
+    items.push({sev:quotaPct >= .9 ? 'high' : 'medium', ic:'wave', t:`Send quota ${Math.round(quotaPct*100)}% used in the last 24 h`, d:`${fmtInt(q.sent_24h)} of ${fmtInt(q.max_24h)}. Sends fail once it is exhausted; request an increase before that.`});
+  const dlq = m.complaint_queue;
+  if (dlq && (dlq.visible + dlq.in_flight) > 0)
+    items.push({sev:'high', ic:'database', t:`${plural(dlq.visible + dlq.in_flight,'undelivered notification')} in the DLQ ${dlq.name}`, d:`A feedback handler is failing to receive SNS deliveries. Messages expire after ${Math.round((dlq.retention_s||0)/86400)} days.`});
+  // the rolling rates are the Advisor's (account complaint_rate/bounce_rate findings carry briefs); only the
+  // "over the review line" case is restated here so it survives an Advisor failure
+  if (met.latest_rate?.rate >= review && !(m.advisor?.findings||[]).some(f=>f.resource==='account' && f.kind==='complaint_rate'))
     items.push({sev:'high', ic:'alert', t:`Rolling complaint rate ${fmtPct(met.latest_rate.rate)} is over the AWS review line`, d:`AWS reviews accounts above ${fmtPct(review,2)}. Pause the riskiest sends and check recent list sources.`});
-  else if (met.peak_rate?.rate >= alert)
-    items.push({sev:'medium', ic:'activity', t:`Peak rate ${fmtPct(met.peak_rate.rate)} crossed the internal alert line`, d:`On ${fmtDate(met.peak_rate.date)} — ${Math.round(met.peak_rate.rate/review*100)}% of the AWS review line. The current rate is ${fmtPct(met.latest_rate?.rate)}.`});
   const findings = m.advisor?.findings || [];
   const byKind = new Map();
   for (const f of findings) { const k = `${f.kind}|${f.severity}`; byKind.set(k, [...(byKind.get(k) || []), f]); }
@@ -931,12 +951,20 @@ function attentionItems() {
     }
     const names = group.map(g => String(g.resource).replace(/`/g, "'").replace(/\s+/g, ' '));
     const list = names.length > 4 ? `${names.slice(0, 3).join(', ')} and ${names.length - 3} more` : names.join(', ');
-    const label = {dkim:'DKIM is not passing', mail_from:'No custom MAIL FROM', spf:'SPF misses amazonses.com', dmarc:'DMARC needs work',
-      routing:'Config sets do not route BOUNCE/COMPLAINT', publishing:'Config sets do not publish Delivery/Open/Click',
-      identity_delivery:'Identities without Delivery notifications', complaint_rate:'Complaint rate over the line', bounce_rate:'Bounce rate over the line'}[f.kind] || f.title;
+    const label = {dkim:'DKIM is not passing', dkim_unsigned:'SES is not DKIM-signing', dkim_key_length:'1024-bit DKIM keys',
+      mail_from:f.severity==='high'?'No aligned SPF or DKIM':'No custom MAIL FROM (DKIM aligns)', spf:'SPF needs work', dmarc:'DMARC needs work',
+      routing:'Config sets do not route BOUNCE/COMPLAINT', ledger_gap:'Config sets route feedback the ledger never sees',
+      publishing:'Config sets do not publish DELIVERY to the ledger', tracking:'Engagement tracking is on',
+      identity_delivery:'Identities without Delivery notifications', identity_feedback_gap:'Identity feedback reaches no handler',
+      identity_unverified:'Identities not verified (cannot send)', identity_email_only:'Address identities that cannot align DMARC',
+      sns_pending:'Feedback topics with unconfirmed subscriptions',
+      complaint_rate:'Complaint rate over the line', bounce_rate:'Bounce rate over the line'}[f.kind] || f.title;
 
-    const noun = {dkim:['identity','identities'], mail_from:['identity','identities'], identity_delivery:['identity','identities'],
-      spf:['domain','domains'], dmarc:['domain','domains'], routing:['config set','config sets'], publishing:['config set','config sets']}[f.kind] || ['row','rows'];
+    const noun = {dkim:['identity','identities'], dkim_unsigned:['identity','identities'], dkim_key_length:['identity','identities'],
+      mail_from:['identity','identities'], identity_delivery:['identity','identities'], identity_feedback_gap:['identity','identities'],
+      identity_unverified:['identity','identities'], identity_email_only:['identity','identities'],
+      spf:['domain','domains'], dmarc:['domain','domains'], routing:['config set','config sets'], ledger_gap:['config set','config sets'],
+      publishing:['config set','config sets'], tracking:['config set','config sets'], sns_pending:['topic','topics']}[f.kind] || ['row','rows'];
     items.push({sev:f.severity, ic:KIND_ICON[f.kind]||'alert', t:`${label} for ${plural(group.length, noun[0], noun[1])}`,
       d:`${list}. ${f.detail}`, fix:(() => {
         const title = `${label} for ${plural(group.length, noun[0], noun[1])}`;
@@ -945,16 +973,24 @@ function attentionItems() {
         return registerBrief(`group:${f.kind}:${f.severity}`, `${group.length} ${noun[1]}`, md);
       })()});
   }
-  const advised = new Set(findings.filter(f=>f.kind==='routing').map(f=>f.resource));
-  for (const g of coverageRows().filter(c=>!c.routes && !advised.has(c.name)).sort((a,b)=>(a.risk==='high'?0:1)-(b.risk==='high'?0:1)))
-    items.push({sev:g.risk==='high'?'high':'medium', ic:'route', t:`${g.name} does not route BOUNCE/COMPLAINT events`,
-      d:`Complaints sent through this config set never reach your handler${g.complaints?` (${g.complaints} recorded)`:''}. SES still suppresses the address at account level.`, fix:routingFixId(g.name)});
+  // routing gaps are the Advisor's; this fallback only speaks when the Advisor could not run
+  if (m.breakdowns?.state === 'unavailable')
+    for (const g of coverageRows().filter(c=>!c.routes && c.enabled !== false && c.risk !== 'disabled').sort((a,b)=>(a.risk==='high'?0:1)-(b.risk==='high'?0:1)))
+      items.push({sev:g.risk==='high'?'high':g.risk==='info'?'info':'medium', ic:'route', t:`${g.name} does not route BOUNCE/COMPLAINT events`,
+        d:`Complaints sent through this config set never reach your handler${g.complaints?` (${g.complaints} recorded)`:''}. SES still suppresses the address at account level.`, fix:routingFixId(g.name)});
   const errs = m.errors || [];
   if (errs.length) items.push({sev:'medium', ic:'alert', t:`${plural(errs.length,'collector source')} failed this refresh`, d:errs.map(e=>e.section).join(', ') + ' — see Retention & methodology.'});
-  if ((m.identities?.failed||0) > 0 && !findings.some(f=>f.kind==='dkim')) items.push({sev:'medium', ic:'server', t:`${plural(m.identities.failed,'sending identity','sending identities')} failed verification`, d:'Fix their DNS (DKIM) or remove them, so they cannot be sent from by mistake.'});
+  // verified identities that SES will not send from are the real surprise; unverified ones are the Advisor's note
+  const off = (m.identities?.rows||[]).filter(r=>r.verified && r.sending === false);
+  if (off.length) items.push({sev:'medium', ic:'server', t:`${plural(off.length,'verified identity','verified identities')} have sending disabled`, d:`${off.map(r=>r.name).join(', ')}. SES refuses mail from them; re-enable with put-email-identity… or delete them if retired.`});
+  for (const r of (m.identities?.other_regions||[])) {
+    if (r.count && r.suppressed_reasons && !r.suppressed_reasons.length)
+      items.push({sev:'info', ic:'server', t:`${r.region} has account-level suppression off`, d:`${plural(r.count,'identity','identities')} there (${r.names.join(', ')})${r.production_access===false?', sandbox':''}. Complainers in that region are not suppressed automatically.`});
+  }
   const untagged = unattributedByConfigSet();
-  if (untagged > 0) items.push({sev:'info', ic:'layers', t:`${plural(untagged,'complaint')} carry no configuration-set dimension`, d:'These were sent without a config set (or through one that does not publish to CloudWatch), so CloudWatch cannot say which sending path they came from.'});
-  if ((m.attribution?.simulator_records||0) > 0) items.push({sev:'info', ic:'flask', t:`${plural(m.attribution.simulator_records,'record')} came from the SES mailbox simulator`, d:'This is synthetic test feedback, not a real subscriber, but it still counts in the account-wide total.'});
+  if (untagged > 0) items.push({sev:'info', ic:'layers', t:`${plural(untagged,'recorded complaint')} carry no configuration-set dimension`, d:'These were sent without a config set, or through one with no CloudWatch destination, so CloudWatch cannot say which sending path they came from. The ledger and app stores attribute what they captured.'});
+  const simHits = m.attribution?.simulator_hits || 0;
+  if (simHits > 0) items.push({sev:'info', ic:'flask', t:`${plural(simHits,'recorded complaint')} (${plural(m.attribution.simulator_records,'address','addresses')}) came from the SES mailbox simulator`, d:'Synthetic test feedback, not a real subscriber, but it still counts in the account-wide total.'});
   const rank = {high:0, medium:1, info:2};
   return items.map((it,i)=>({...it, i})).sort((a,b)=>rank[a.sev]-rank[b.sev] || a.i-b.i);
 }
@@ -1248,7 +1284,7 @@ function renderAttribution() {
     </div>
     <div class="box">
       <h3>How much of the count is traced to a recipient</h3>
-      <p class="sub" style="margin-top:0">CloudWatch counts complaints for the whole account. Recipient-level records exist only where a store kept them, and the two cover different windows.</p>
+      <p class="sub" style="margin-top:0">CloudWatch counts complaint events for the whole account. Recipient-level records exist only where a store kept them (the ledger's bounce rows are not shown here), and the two cover different windows, so the bars rarely match exactly.</p>
       <div class="recon">
         <span class="rl">CloudWatch recorded</span>${bar([{n:a.cloudwatch_recorded||0, cls:'b-s0', label:'CloudWatch Complaint count'}])}<span class="rn">${fmtInt(a.cloudwatch_recorded)}</span>
         <span class="rl">Recipient-level records</span>${bar([{n:a.real_records||0, cls:'b-s1', label:'Real complainants'},{n:simN, cls:'b-s2', label:'Mailbox-simulator (test)'}])}<span class="rn">${fmtInt(a.records)}</span>
@@ -1326,7 +1362,7 @@ function mountProviders() {
       ${share || '<p class="sub">No deliveries counted in this range.</p>'}
     </div>
     <div id="providerTable"></div>
-    <p class="sub">Source: the self-owned ledger (complaints and permanent bounces over counted deliveries; opens and clicks count each message once). Rates appear once a row has ${floor} deliveries in the range. Opens inflated by Apple Mail Privacy Protection. The hero rate above stays CloudWatch's, which is what AWS enforces.</p>
+    <p class="sub">Source: the self-owned ledger (complaints per delivery, permanent bounces per send; opens and clicks count each message once). Rates appear once a row has ${floor} sends in the range${w.since_effective?`, counted from ${fmtDate(w.since_effective)}, when delivery counting began`:''}. Gmail sends no complaint feedback, so its complaint rate reads 0 whatever its users do. Opens inflated by Apple Mail Privacy Protection. The hero rate above stays CloudWatch's, which is what AWS enforces.</p>
     <details class="more"><summary>By sending identity and configuration set</summary>
       <h3>By sending identity</h3><div id="identityBreakdown"></div>
       <h3>By configuration set</h3><div id="configSetBreakdown"></div>
@@ -1346,8 +1382,8 @@ function renderRecords() {
       <div><h3>Recipients flagged as complainants (application accounts)</h3>
         <p class="sub">Complaints whose recipient matched an application account. The ARF provider is the feedback loop the mailbox provider reported through.</p>
         <div id="complainantTable"></div></div>
-      <div><h3>Unattributed complaint domains (CloudWatch Logs, last 7 days)</h3>
-        <p class="sub">Complaints with no matching account. The pipeline logs only the recipient domain and feedback type.</p>
+      <div><h3>Unattributed feedback domains (CloudWatch Logs, last 7 days)</h3>
+        <p class="sub">Bounces and complaints with no matching account. The pipeline logs only the kind, recipient domain and feedback type.</p>
         ${rows.length ? `<div id="unattrTable"></div>` : '<div class="box muted">No unattributed feedback events in the last 7 days. Log retention is 7 days.</div>'}</div>
     </div>`;
 }
@@ -1359,11 +1395,12 @@ function coverageRows() {
   for (const c of sets) byName.set(c.name, {name:c.name, types:c.event_types||[], routes:!!c.forwards_feedback});
   for (const c of cov) {
     const r = byName.get(c.config_set) || {name:c.config_set, types:c.event_types||[], routes:!!c.routes_feedback};
-    Object.assign(r, {risk:c.risk, sends:c.sends, complaints:c.complaints, routes:!!c.routes_feedback});
+    Object.assign(r, {risk:c.risk, sends:c.sends, sendsRecent:c.sends_recent, usage:c.usage, complaints:c.complaints, routes:!!c.routes_feedback,
+      enabled:c.sending_enabled !== false, ledger:!!c.reaches_ledger, covered:c.covered_by||[]});
     if (!r.types.length && c.event_types) r.types = c.event_types;
     byName.set(c.config_set, r);
   }
-  const rank = {high:0, medium:1, ok:2};
+  const rank = {high:0, medium:1, info:2, ok:3, disabled:4};
   for (const r of byName.values()) if (!r.risk) r.risk = r.routes ? 'ok' : 'medium';
   return [...byName.values()].sort((a,b)=>(rank[a.risk]??3)-(rank[b.risk]??3) || a.name.localeCompare(b.name));
 }
@@ -1375,29 +1412,40 @@ function renderCoverage() {
   const cell = (has, critical) => has ? `<span class="mx y" title="routed">${icon('tick')}<span class="sr">routed</span></span>`
     : critical ? `<span class="mx n" title="not routed">${icon('cross')}<span class="sr">not routed</span></span>`
     : `<span class="mx o">${icon('minus')}<span class="sr">not routed</span></span>`;
-  const risk = r => r.risk==='high' ? tag('high','bad','alert') : r.risk==='medium' ? tag('medium','warn','alert') : r.risk==='ok' ? tag('ok','ok','check') : '<span class="muted">—</span>';
+  const risk = r => r.risk==='disabled' ? `<span class="tag" title="sending disabled on this configuration set">off</span>`
+    : r.risk==='high' ? tag('high','bad','alert') : r.risk==='medium' ? tag('medium','warn','alert')
+    : r.risk==='info' ? `<span class="tag info" title="${esc(r.covered.length?`covered by identity notifications on ${r.covered.join(', ')}`:'no sends in the last 14 days')}">note</span>`
+    : r.risk==='ok' ? (r.ledger ? tag('ok','ok','check') : `<span class="tag ok" title="routes to a handler, but the ledger is not subscribed">ok · no ledger</span>`) : '<span class="muted">—</span>';
+  const sendsCell = r => r.sends==null ? '<span class="muted" title="no Send or reputation metric for this set">—</span>'
+    : `${fmtInt(r.sends)}${r.sendsRecent!=null?`<div class="cell-sub">${r.sendsRecent?fmtInt(r.sendsRecent)+' in 14 d':'idle 14 d'}</div>`:''}`;
   const matrix = `<div class="matrixwrap"><table class="matrix">
     <thead><tr><th>Configuration set</th>${cols.map(c=>`<th class="${crit.includes(c)?'crit':''}">${esc(c)}</th>`).join('')}<th>Sends</th><th>Complaints</th><th>Risk</th><th><span class="sr">Fix</span></th></tr></thead>
-    <tbody>${rows.map(r=>`<tr><td class="mono">${esc(r.name)}</td>${cols.map(c=>`<td data-label="${esc(c)}">${cell(r.types.includes(c), crit.includes(c))}</td>`).join('')}
-      <td class="num" data-label="Sends">${r.sends==null?'<span class="muted">—</span>':fmtInt(r.sends)}</td><td class="num" data-label="Complaints">${r.complaints==null?'—':fmtInt(r.complaints)}</td>
-      <td>${risk(r)}</td><td class="fixcell">${r.routes?'':fixButton(routingFixId(r.name),'Fix')}</td></tr>`).join('')}</tbody></table></div>`;
+    <tbody>${rows.map(r=>`<tr${r.enabled?'':' class="muted"'}><td class="mono">${esc(r.name)}${r.enabled?'':'<div class="cell-sub">sending disabled</div>'}</td>${cols.map(c=>`<td data-label="${esc(c)}">${cell(r.types.includes(c), crit.includes(c))}</td>`).join('')}
+      <td class="num" data-label="Sends">${sendsCell(r)}</td><td class="num" data-label="Complaints">${r.complaints==null?'<span class="muted" title="no CloudWatch COMPLAINT metric for this set">—</span>':fmtInt(r.complaints)}</td>
+      <td>${risk(r)}</td><td class="fixcell">${r.routes||!r.enabled?'':fixButton(routingFixId(r.name),'Fix')}</td></tr>`).join('')}</tbody></table></div>`;
 
   // pipeline: send → event destinations → SNS → handler → stores
-  const fwd = m.config_sets.filter(c=>c.forwards_feedback).length;
+  const liveSets = m.config_sets.filter(c=>c.sending_enabled!==false);
+  const fwd = liveSets.filter(c=>c.forwards_feedback).length;
   const idfb = m.identity_feedback || [];
-  const subs = (m.sns_topics||[]).flatMap(t=>t.subscribers||[]).filter(s=>s.protocol==='lambda'||s.protocol==='https');
+  const fbArns = new Set([...m.config_sets.flatMap(c=>[...(c.feedback_topics||[]), ...(c.delivery_topics||[])]),
+    ...idfb.flatMap(r=>[r.complaint_topic, r.bounce_topic, r.delivery_topic].filter(Boolean))]);
+  const fbTopics = (m.sns_topics||[]).filter(t=>fbArns.has(t.arn));
+  const subs = fbTopics.flatMap(t=>(t.consumers||[]).map(e=>({endpoint:e})));
+  const ledgerN = fbTopics.filter(t=>t.ledger_subscribed).length;
   const q = m.complaint_queue;
   const node = (k, v, d, gap=false) => `<div class="node${gap?' gap':''}" role="listitem"><div class="nk">${k}</div><div class="nv">${v}</div><div class="nd">${d}</div></div>`;
   const flow = `<div class="flow" role="list" aria-label="Complaint feedback pipeline">
     ${node('1 · Send', `${m.config_sets.length} config sets`, `${(m.identities?.rows||[]).length} identities in ${esc(m.meta.region)}`)}
-    ${node('2 · Route', `${fwd} / ${m.config_sets.length} route feedback`, `${plural(idfb.length,'identity','identities')} also route${idfb.length===1?'s':''} through ${idfb.length===1?'its':'their'} own topic`, fwd < m.config_sets.length)}
-    ${node('3 · Notify', `${plural((m.sns_topics||[]).length,'SNS topic')}`, `${plural(subs.length,'handler subscription')}`)}
-    ${node('4 · Handle', subs.length?'Feedback handler':'No handler', subs.length?esc(subs.map(s=>s.endpoint.split(':').pop()).join(', ')):'nothing subscribed', !subs.length)}
+    ${node('2 · Route', `${fwd} / ${liveSets.length} route feedback`, `${plural(idfb.length,'identity','identities')} also route${idfb.length===1?'s':''} through ${idfb.length===1?'its':'their'} own topic`, fwd < liveSets.length)}
+    ${node('3 · Notify', `${plural(fbTopics.length,'feedback topic')}`, `${plural(subs.length,'handler subscription')} · ledger on ${ledgerN}`)}
+    ${node('4 · Handle', subs.length?'Feedback handlers':'No app handler', subs.length?esc([...new Set(subs.map(s=>s.endpoint.replace(/^https?:\/\//,'').split(':').pop()))].join(', ')):'only the ledger reads feedback', !subs.length && !ledgerN)}
     ${node('5 · Retain', `${plural((m.stores||[]).length,'store')}`, q?`DLQ <code>${esc(q.name)}</code>: ${q.visible} visible`:'no DLQ found', q && q.visible > 0)}
   </div>`;
   const sup = (m.posture.suppressed_reasons||[]);
+  const overrides = m.config_sets.filter(c=>Array.isArray(c.suppressed_reasons) && !sup.every(r=>c.suppressed_reasons.includes(r))).map(c=>c.name);
   return `${flow}
-    <p class="sub" style="margin-top:12px">${sup.length?`SES suppresses <code>${sup.map(esc).join('</code> and <code>')}</code> addresses for <em>every</em> config set at account level. A routing gap means your app never hears about the complaint. It does not stop the suppression.`:'<span class="bad">Account-level suppression is off, so recipients are NOT suppressed automatically when they complain.</span>'}</p>
+    <p class="sub" style="margin-top:12px">${sup.length?`SES suppresses <code>${sup.map(esc).join('</code> and <code>')}</code> addresses at account level${overrides.length?` (overridden on ${overrides.map(esc).join(', ')})`:' for every config set'}. A routing gap means your app never hears about the complaint. It does not stop the suppression.`:'<span class="bad">Account-level suppression is off, so recipients are NOT suppressed automatically when they complain.</span>'}</p>
     <h3>Which config sets route each event type</h3>
     ${matrix}
     <details class="more" style="margin-top:12px"><summary>Destinations, identity topics and SNS subscribers</summary>
@@ -1434,7 +1482,7 @@ function renderInfra() {
     ${renderAuthGrid()}
     <div class="box">
       <h3>Sending identities in ${esc(m.meta.region)}</h3>
-      <p class="sub" style="margin-top:0">${fmtInt(id.verified)} verified and sending · ${fmtInt(id.failed)} failed · ${fmtInt(id.pending)} pending.${other?` Other regions: ${other}.`:''}</p>
+      <p class="sub" style="margin-top:0">${fmtInt(id.sending ?? id.verified)} verified and sending${id.verified_not_sending?` · ${fmtInt(id.verified_not_sending)} verified but sending disabled`:''} · ${fmtInt(id.failed)} failed · ${fmtInt(id.pending)} pending.${other?` Other regions: ${other}.`:''}</p>
       ${idBar}
       <div id="idTable"></div>
     </div>`;
@@ -1445,16 +1493,16 @@ function renderAuthGrid() {
   const doms = Object.keys(checks).sort();
   if (!doms.length) return '';
   const cell = (v, label) => {
-    const ok = v === 'pass';
+    const ok = String(v||'').startsWith('pass');
     const dns = String(v||'').startsWith('not checked');
     const cls = ok ? 'y' : dns ? 'o' : 'n';
     const ic = ok ? 'tick' : dns ? 'minus' : 'cross';
-    return `<td data-label="${label}"><span class="mx ${cls}" title="${esc(v)}">${icon(ic)}<span class="sr">${esc(v)}</span></span>${ok?'':` <span class="cell-sub" style="display:inline">${esc(v)}</span>`}</td>`;
+    return `<td data-label="${label}"><span class="mx ${cls}" title="${esc(v)}">${icon(ic)}<span class="sr">${esc(v)}</span></span>${v==='pass'?'':` <span class="cell-sub" style="display:inline">${esc(ok?String(v).replace(/^pass · /,''):v)}</span>`}</td>`;
   };
-  const failing = doms.filter(d => ['dkim','spf','dmarc'].some(k => checks[d][k] && checks[d][k] !== 'pass'));
+  const failing = doms.filter(d => ['dkim','spf','dmarc'].some(k => checks[d][k] && !String(checks[d][k]).startsWith('pass')));
   const row = d => `<tr><td class="mono">${esc(d)}</td>${cell(checks[d].dkim,'DKIM')}${cell(checks[d].spf,'SPF')}${cell(checks[d].dmarc,'DMARC')}<td data-label="MAIL FROM" class="mono">${esc(checks[d].mail_from||'—')}</td></tr>`;
   return `<div class="box"><h3 style="margin-top:0">Authentication · ${plural(doms.length,'sending domain')}</h3>
-    <p class="sub" style="margin-top:0">DKIM from SES; SPF (custom MAIL FROM) and DMARC from public DNS. ${failing.length ? `${plural(failing.length,'domain')} need attention.` : 'All domains pass.'}</p>
+    <p class="sub" style="margin-top:0">DKIM from SES, or from the sending app for identities tagged with an app-signed Project; SPF (custom MAIL FROM) and DMARC from public DNS. ${failing.length ? `${plural(failing.length,'domain')} need attention.` : 'All domains pass.'}</p>
     <details class="more" ${failing.length && failing.length <= 8 ? 'open' : ''}><summary>Show the authentication grid</summary>
     <div class="matrixwrap" style="margin-top:10px"><table class="matrix auth">
       <thead><tr><th>Domain</th><th>DKIM</th><th>SPF</th><th>DMARC</th><th>MAIL FROM</th></tr></thead>
@@ -1559,7 +1607,7 @@ function render() {
   const app = document.getElementById('app');
   const cs = state.model.config_set_complaints || [];
   if (state.source !== 'all' && !cs.some(c=>c.config_set===state.source)) state.source = 'all';
-  const gaps = coverageRows().filter(c=>!c.routes).length;
+  const gaps = coverageRows().filter(c=>!c.routes && c.enabled !== false).length;
   app.innerHTML =
     renderHero() + renderAttention() + renderDelta() +
     `<section class="reveal" style="--i:3">${sechead('trend','01 · Volume','Complaint trend','The rolling rate against AWS’s line, and the days complaints actually landed, on one time axis.')}<div id="trendSection"></div></section>` +
@@ -1631,7 +1679,7 @@ function render() {
   }));
   const un = state.model.unattributed || [];
   if (un.length) document.getElementById('unattrTable').append(makeTable({columns:[
-      {key:'domain',title:'Recipient domain',cls:'mono'},{key:'feedback_type',title:'Feedback type'},{key:'events',title:'Events',type:'num',cls:'num'}],
+      {key:'kind',title:'Kind',render:r=>r.kind?esc(r.kind):'<span class="muted">—</span>'},{key:'domain',title:'Recipient domain',cls:'mono'},{key:'feedback_type',title:'Feedback type'},{key:'events',title:'Events',type:'num',cls:'num'}],
     rows:un, search:false, csv:'unattributed-domains'}));
   const cs2 = state.model.config_sets;
   document.getElementById('csTable').append(makeTable({
@@ -1667,9 +1715,13 @@ function render() {
       {key:'name',title:'Identity',cls:'mono'},
       {key:'type',title:'Type'},
       {key:'dkim_status',title:'DKIM status',render:r=>r.dkim_status==='SUCCESS'?`<span class="ok">${esc(r.dkim_status)}</span>`:(r.dkim_status==='FAILED'?`<span class="bad">${esc(r.dkim_status)}</span>`:esc(r.dkim_status||'—'))},
-      {key:'sending',title:'Sending',render:r=>r.sending?'yes':'no'},
+      {key:'verification_status',title:'Verification',render:r=>{const v=r.verification_status||(r.verified?'SUCCESS':'FAILED'); return v==='SUCCESS'?`<span class="ok">${esc(v)}</span>`:`<span class="bad">${esc(v)}</span>`;}},
+      {key:'sending',title:'Sending',hint:'SendingEnabled from ListEmailIdentities',render:r=>r.sending?'yes':'<span class="muted">no</span>'},
+      {key:'default_config_set',title:'Default config set',render:r=>r.default_config_set?`<span class="mono">${esc(r.default_config_set)}</span>`:'<span class="muted">—</span>'},
+      {key:'project',title:'Project',render:r=>r.project?esc(r.project):'<span class="muted">—</span>'},
     ], rows:id.rows||[], height:340,
-    filters:[{key:'dkim_status',label:'All statuses',value:r=>r.dkim_status},{key:'type',label:'All types',value:r=>r.type}],
+    filters:[{key:'dkim_status',label:'All DKIM statuses',value:r=>r.dkim_status},{key:'type',label:'All types',value:r=>r.type},
+      {key:'sending',label:'Sending and not',value:r=>r.sending?'sending':'not sending'}],
   }));
   observeSections();
 }

@@ -18,9 +18,12 @@ carries a TTL so rows expire on the configured retention window (default 13
 months).
 
 Idempotency: the sort key is derived from the SES event itself
-(``<epoch>#<eventType>#<mail.messageId>``), not from the SNS delivery, so the
-same complaint delivered to two topics (config-set *and* identity-level) writes
-one row. SNS is at-least-once; the put is keyed and safe to repeat.
+(``<eventType>#<mail.messageId>``), not from the SNS delivery or its timestamp,
+so the same complaint delivered to two topics (config-set *and* identity-level)
+writes one row even when the two copies' timestamps straddle a second boundary.
+The config-set copy carries the ``ses:configuration-set`` tag and the identity
+copy does not, so a put only replaces an existing row that lacks the set. SNS is
+at-least-once; the put is keyed and safe to repeat.
 """
 
 from __future__ import annotations
@@ -31,6 +34,7 @@ import json
 import logging
 import os
 import re
+from email.utils import parseaddr
 from urllib.request import HTTPRedirectHandler, build_opener
 
 import boto3
@@ -110,8 +114,11 @@ def _event_kind(event: dict) -> str:
 
 
 def _sending_identity(event: dict) -> str:
+    """Domain of ``mail.source``, which may be a display-name form
+    (``"Name" <x@wm.emcognito.com>``): parse it, do not split on '@'."""
     source = ((event.get("mail") or {}).get("source")) or ""
-    return source.rsplit("@", 1)[-1].lower() if "@" in source else ""
+    addr = parseaddr(source)[1] or source
+    return addr.rsplit("@", 1)[-1].strip("<>").lower() if "@" in addr else ""
 
 
 def _config_set(event: dict) -> str:
@@ -170,7 +177,9 @@ def records_for_event(event: dict, source: str, sns_message_id: str, now: dt.dat
             continue
         item = {
             "recipient_hash": recipient_hash(email),
-            "sk": f"{epoch}#{event_type}#{ses_message_id}",
+            # no message id (should not happen for SES events): fall back to the
+            # timestamp so two distinct events cannot collide on "BOUNCE#"
+            "sk": f"{event_type}#{ses_message_id or epoch}",
             "event_type": event_type,
             "ts": ts.isoformat(),
             "ts_epoch": epoch,
@@ -323,13 +332,18 @@ def _confirm_subscription(url: str) -> None:
 
 
 def _write(items: list[dict]) -> int:
+    """Write rows; a second copy of the same event only replaces the first when
+    it adds the configuration set the identity-level copy lacks."""
     table = _table()
     written = 0
     for item in items:
         try:
-            table.put_item(Item=item)
+            table.put_item(Item=item, ConditionExpression="attribute_not_exists(recipient_hash)"
+                           + (" OR attribute_not_exists(config_set)" if item.get("config_set") else ""))
             written += 1
         except Exception as exc:  # noqa: BLE001 - one bad row must not drop the batch
+            if _is_conditional_failure(exc):
+                continue  # already recorded from the other feed
             log.warning("[ledger] put failed for sk=%s: %s", item.get("sk"), exc)
     return written
 

@@ -75,7 +75,10 @@ def test_complaint_record_fields_and_ttl():
     assert r["sending_identity"] == "example.com"
     assert r["source"] == "example-ses-feedback"
     assert r["recipient_hash"] == ledger.recipient_hash("complaint@simulator.amazonses.com")
-    assert r["sk"].startswith(f"{int(dt.datetime(2026,10,12,11,30,34,tzinfo=dt.timezone.utc).timestamp())}#COMPLAINT#0100abc")
+    # keyed by event, not by timestamp: the config-set and identity copies of
+    # one event can carry timestamps a second apart
+    assert r["sk"] == "COMPLAINT#0100abc"
+    assert r["ts_epoch"] == int(dt.datetime(2026, 10, 12, 11, 30, 34, tzinfo=dt.timezone.utc).timestamp())
     assert r["ttl"] == int(NOW.timestamp()) + ledger.RETENTION_DAYS * 86400
     # source_key falls back to the sending identity when there is no config set
     assert r["source_key"] == "example.com"
@@ -123,10 +126,20 @@ def test_non_feedback_event_ignored():
 
 
 class _FakeTable:
+    """Enough of a DynamoDB table to honour the ingest's conditional put."""
+
     def __init__(self):
         self.items = []
 
-    def put_item(self, Item):  # noqa: N803 - boto3 keyword
+    def put_item(self, Item, ConditionExpression=None):  # noqa: N803 - boto3 keyword
+        from botocore.exceptions import ClientError
+        key = (Item["recipient_hash"], Item["sk"])
+        existing = next((i for i in self.items if (i["recipient_hash"], i["sk"]) == key), None)
+        if existing is not None and ConditionExpression:
+            may_replace = "attribute_not_exists(config_set)" in ConditionExpression and "config_set" not in existing
+            if not may_replace:
+                raise ClientError({"Error": {"Code": "ConditionalCheckFailedException"}}, "PutItem")
+            self.items.remove(existing)
         self.items.append(Item)
 
 

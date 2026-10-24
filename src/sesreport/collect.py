@@ -80,9 +80,11 @@ def _iso(d) -> str:
 
 
 def _day(d) -> str:
-    """Wall-clock day exactly as CloudWatch published it (local tz from botocore)."""
+    """UTC calendar day. CloudWatch datapoints, the ledger's ``day`` and the SES
+    console all use UTC; a local-midnight day would label every winter day one
+    day early on a BST machine."""
     if isinstance(d, dt.datetime):
-        return d.date().isoformat()
+        return d.astimezone(dt.timezone.utc).date().isoformat()
     return str(d)[:10]
 
 
@@ -122,9 +124,10 @@ def collect_posture(errors: Errors) -> dict:
 # 2. CloudWatch metrics (complaints, sends, bounces, reputation rate)
 # --------------------------------------------------------------------------- #
 def _aligned_window(days: int) -> tuple[dt.datetime, dt.datetime]:
-    """A window whose daily periods align to local midnight, so a given complaint
-    always lands on the same calendar day regardless of when we query."""
-    now = dt.datetime.now().astimezone()
+    """A window whose daily periods align to UTC midnight, so a given complaint
+    always lands on the same (UTC) calendar day regardless of when we query,
+    and matches the ledger's ``day`` and the SES console."""
+    now = dt.datetime.now(dt.timezone.utc)
     end = now.replace(hour=0, minute=0, second=0, microsecond=0) + dt.timedelta(days=1)
     start = end - dt.timedelta(days=days)
     return start, end
@@ -181,6 +184,7 @@ def collect_metrics(errors: Errors) -> dict:
     sends = _sum_series(cw, "Send", total_days)
     bounces = _sum_series(cw, "Bounce", total_days)
     rate = _avg_series(cw, "Reputation.ComplaintRate", total_days)
+    bounce_rate = _avg_series(cw, "Reputation.BounceRate", total_days)
 
     complaints_list = [{"date": k, "count": int(v)} for k, v in sorted(complaints.items())]
     total_complaints = int(sum(complaints.values()))
@@ -190,52 +194,111 @@ def collect_metrics(errors: Errors) -> dict:
     rate_series = [{"date": k, "rate": v} for k, v in sorted(rate.items())]
     peak = max(rate_series, key=lambda r: r["rate"]) if rate_series else None
     latest = rate_series[-1] if rate_series else None
+    bounce_series = [{"date": k, "rate": v} for k, v in sorted(bounce_rate.items())]
 
+    today = dt.datetime.now(dt.timezone.utc).date().isoformat()
     retention_start = (dt.datetime.now(dt.timezone.utc) - dt.timedelta(days=total_days)).date().isoformat()
+    # The Complaint metric only exists from METRIC_EPOCH (or the first recorded
+    # day); dividing it by 455 days of sends understated the rate 25x. Use the
+    # sends from the same window instead. This is still "complaints per send,
+    # all providers", not SES's enforcement rate (Reputation.ComplaintRate),
+    # which only counts providers that send complaint feedback.
+    window_start = complaints_list[0]["date"] if complaints_list else METRIC_EPOCH.date().isoformat()
+    window_sends = int(sum(v for k, v in sends.items() if k >= window_start))
     return {
         "window": {
             # recorded-complaint window (the Complaint metric only exists here)
-            "start": complaints_list[0]["date"] if complaints_list else METRIC_EPOCH.date().isoformat(),
-            "end": complaints_list[-1]["date"] if complaints_list else dt.datetime.now(dt.timezone.utc).date().isoformat(),
+            "start": window_start,
+            "end": today,
             # full retention window used for the send/bounce denominator
             "retention_start": retention_start,
-            "retention_end": dt.datetime.now(dt.timezone.utc).date().isoformat(),
+            "retention_end": today,
             "days": total_days,
+            "window_days": (dt.date.fromisoformat(today) - dt.date.fromisoformat(window_start)).days + 1,
         },
         "total_complaints": total_complaints,
         "total_sends": total_sends,
+        "window_sends": window_sends,
         "total_bounces": total_bounces,
-        "overall_complaint_rate": (total_complaints / total_sends) if total_sends else None,
+        "overall_complaint_rate": (total_complaints / window_sends) if window_sends else None,
         "complaints_by_day": complaints_list,
         "sends_by_day": [{"date": k, "count": int(v)} for k, v in sorted(sends.items())],
         "bounces_by_day": [{"date": k, "count": int(v)} for k, v in sorted(bounces.items())],
         "rate_series": rate_series,
         "peak_rate": peak,
         "latest_rate": latest,
-        "aws_review_line": 0.001,
-        "alert_line": 0.0009,
+        "bounce_rate_series": bounce_series,
+        "latest_bounce_rate": bounce_series[-1] if bounce_series else None,
+        "aws_review_line": _advisor.COMPLAINT_LINES[0][0],
+        # one internal line everywhere: the Advisor's medium line, the hero's
+        # "watch closely" band and the attention list all use this value
+        "alert_line": _advisor.COMPLAINT_LINES[1][0],
     }
 
 
-def collect_config_set_complaints(errors: Errors) -> list[dict]:
-    """Complaint counts per SES configuration set (CloudWatch dimension)."""
+CS_DIM = "ses:configuration-set"
+RECENT_DAYS = 14  # "used recently" window for config-set usage
+
+
+def _cs_series(cw, metric: str, name: str, days: int = RETENTION_DAYS) -> dict[str, float]:
+    return _sum_series(cw, metric, days, extra_dims=[{"Name": CS_DIM, "Value": name}])
+
+
+def _recent(series: dict[str, float], days: int = RECENT_DAYS) -> int:
+    cutoff = (dt.datetime.now(dt.timezone.utc).date() - dt.timedelta(days=days - 1)).isoformat()
+    return int(sum(v for k, v in series.items() if k >= cutoff))
+
+
+def collect_config_set_metrics(errors: Errors, config_sets: list[dict]) -> dict:
+    """Per-configuration-set CloudWatch numbers: complaints and sends/usage.
+
+    Every configuration set is queried by name. ``list_metrics`` only returns
+    metrics with datapoints in the last 14 days, so enumerating from it hid
+    every complaint older than two weeks (8 on emcognito-transactional).
+
+    ``Send``/``Complaint`` with the config-set dimension exist only for sets
+    with a CloudWatch event destination; SES's own ``Reputation.*`` metrics
+    cover every set with reputation metrics enabled, so they are the fallback
+    for usage. Sends are ``None`` only when neither source can know.
+    """
     cw = _client("cloudwatch")
-    metrics = cw.list_metrics(Namespace="AWS/SES", MetricName="Complaint")["Metrics"]
-    out = []
-    for m in metrics:
-        dims = {d["Name"]: d["Value"] for d in m["Dimensions"]}
-        if "ses:configuration-set" not in dims:
-            continue
-        cs = dims["ses:configuration-set"]
-        series = _sum_series(
-            cw,
-            "Complaint",
-            (dt.datetime.now(dt.timezone.utc) - METRIC_EPOCH).days + 1,
-            extra_dims=[{"Name": "ses:configuration-set", "Value": cs}],
-        )
-        days = [{"date": k, "count": int(v)} for k, v in sorted(series.items()) if v]
-        if days:
-            out.append({"config_set": cs, "events": int(sum(series.values())), "days": days})
+    complaint_days = (dt.datetime.now(dt.timezone.utc) - METRIC_EPOCH).days + 1
+
+    def one(cs: dict) -> tuple[str, dict]:
+        name = cs["name"]
+        publishes_cw = any(d.get("type") == "cloudwatch" and d.get("enabled", True) for d in cs.get("destinations") or [])
+        send = _cs_series(cw, "Send", name)
+        source = "Send"
+        if not send:
+            send = _cs_series(cw, "Reputation.DeliveriesEligibleForBounceRate", name)
+            source = "Reputation.DeliveriesEligibleForBounceRate" if send else None
+        known = bool(send) or publishes_cw or cs.get("reputation_metrics", False)
+        complaints = _cs_series(cw, "Complaint", name, complaint_days) if publishes_cw else {}
+        return name, {
+            "sends": int(sum(send.values())) if known else None,
+            "sends_recent": _recent(send) if known else None,
+            "last_send": max(send) if send else None,
+            "sends_source": source,
+            "complaints": int(sum(complaints.values())) if publishes_cw else None,
+            "complaint_days": [{"date": k, "count": int(v)} for k, v in sorted(complaints.items()) if v],
+        }
+
+    out: dict[str, dict] = {}
+    with ThreadPoolExecutor(max_workers=8) as ex:
+        futs = {ex.submit(one, cs): cs["name"] for cs in config_sets}
+        for f in as_completed(futs):
+            try:
+                name, row = f.result()
+                out[name] = row
+            except (ClientError, BotoCoreError) as e:
+                errors.add(f"config_set_metrics:{futs[f]}", e)
+    return out
+
+
+def config_set_complaints(metrics: dict[str, dict]) -> list[dict]:
+    """The ``config_set_complaints`` model section from ``collect_config_set_metrics``."""
+    out = [{"config_set": n, "events": m["complaints"], "days": m["complaint_days"]}
+           for n, m in metrics.items() if m.get("complaints")]
     out.sort(key=lambda x: x["events"], reverse=True)
     return out
 
@@ -504,6 +567,38 @@ def collect_ledger_aggregates(errors: Errors, cache_dir: Path | None = None) -> 
         return []
 
 
+def _identity_domain(value: str) -> str:
+    """The domain of a sending identity, tolerating a stored display-name form
+    (``"Name" <x@wm.emcognito.com>`` was once kept as ``wm.emcognito.com>``)."""
+    v = (value or "").strip().strip("<>").strip()
+    if "@" in v:
+        v = v.rsplit("@", 1)[1]
+    return v.rstrip(">").lower()
+
+
+def dedupe_ledger_rows(rows) -> list[dict]:
+    """One row per SES event per recipient.
+
+    The same bounce arrives on the config-set topic and on the identity topic
+    with timestamps that can straddle a second boundary, so rows written by the
+    older ingest sort key (``<epoch>#...``) can exist twice. Keep the copy that
+    knows the configuration set (the identity feed carries none); without a
+    message id there is nothing to match on, so the row is kept as is.
+    """
+    best: dict[tuple, dict] = {}
+    passthrough: list[dict] = []
+    for r in rows:
+        mid = r.get("ses_message_id") or ""
+        if not mid:
+            passthrough.append(r)
+            continue
+        key = (r.get("recipient_hash") or r.get("email") or "", mid, (r.get("event_type") or "").upper())
+        cur = best.get(key)
+        if cur is None or (not cur.get("config_set") and r.get("config_set")):
+            best[key] = r
+    return list(best.values()) + passthrough
+
+
 def collect_ledger(errors: Errors) -> dict:
     """Read the self-owned feedback ledger, if one is configured.
 
@@ -522,29 +617,29 @@ def collect_ledger(errors: Errors) -> dict:
         errors.add("ledger", e)
         return {**empty, "error": True}
 
-    records = []
-    for it in items:
-        records.append(
-            {
-                "email": it.get("recipient", ""),
-                "store": CFG.ledger_table,
-                "detail": it.get("feedback_type", ""),
-                "source": it.get("source", ""),
-                "first_seen": _iso(it.get("ts")),
-                "last_seen": _iso(it.get("ts")),
-                "hits": 1,
-                "simulator": bool(it.get("simulator")),
-                "event_type": it.get("event_type", ""),
-                "sending_identity": it.get("sending_identity", ""),
-                "config_set": it.get("config_set", ""),
-                "recipient_domain": it.get("recipient_domain", ""),
-                "day": it.get("day", ""),
-                # The stored key is the SHA-256 of the real address; the report
-                # keeps it so the ledger row can be matched against a full-address
-                # application-store row (see ``_identity_hash``).
-                "recipient_hash": it.get("recipient_hash", ""),
-            }
-        )
+    records = dedupe_ledger_rows(
+        {
+            "email": it.get("recipient", ""),
+            "store": CFG.ledger_table,
+            "detail": it.get("feedback_type", ""),
+            "source": it.get("source", ""),
+            "first_seen": _iso(it.get("ts")),
+            "last_seen": _iso(it.get("ts")),
+            "hits": 1,
+            "simulator": bool(it.get("simulator")),
+            "event_type": it.get("event_type", ""),
+            "sending_identity": _identity_domain(it.get("sending_identity", "")),
+            "config_set": it.get("config_set", ""),
+            "recipient_domain": it.get("recipient_domain", ""),
+            "day": it.get("day", ""),
+            "ses_message_id": it.get("ses_message_id", ""),
+            # The stored key is the SHA-256 of the real address; the report
+            # keeps it so the ledger row can be matched against a full-address
+            # application-store row (see ``_identity_hash``).
+            "recipient_hash": it.get("recipient_hash", ""),
+        }
+        for it in items
+    )
     records.sort(key=lambda r: r.get("last_seen") or "", reverse=True)
     stamps = [r["last_seen"] for r in records if r.get("last_seen")]
     return {
@@ -605,31 +700,31 @@ def collect_suppression_list(errors: Errors) -> dict | None:
         return None
 
 
-def collect_config_set_sends(errors: Errors) -> dict[str, int]:
-    """Sends per configuration set — only sets with a CloudWatch event destination
-    publish this metric, so the map is partial by nature."""
-    cw = _client("cloudwatch")
-    metrics = cw.list_metrics(Namespace="AWS/SES", MetricName="Send")["Metrics"]
-    names = sorted(
-        {d["Value"] for m in metrics for d in m["Dimensions"] if d["Name"] == "ses:configuration-set"}
-    )
-    out: dict[str, int] = {}
-    for n in names:
-        series = _sum_series(
-            cw, "Send", RETENTION_DAYS, extra_dims=[{"Name": "ses:configuration-set", "Value": n}]
-        )
-        out[n] = int(sum(series.values()))
-    return out
-
-
 # Names that look like public/unauthenticated send paths attract complaints.
 _PUBLIC_HINTS = ("feedback", "invite", "public", "contact", "form", "signup", "waitlist", "refer")
 
 
-def _coverage_risk(name: str, routes: bool) -> str:
-    if routes:
+def _usage(sends_recent) -> str:
+    if sends_recent is None:
+        return "unknown"
+    return "active" if sends_recent > 0 else "idle"
+
+
+def _coverage_risk(row: dict) -> str:
+    """How much an unrouted config set matters.
+
+    ``disabled`` sets cannot send, so they are not a gap. A set whose only
+    plausible senders already route feedback through identity-level topics is a
+    note, as is one nothing has used in RECENT_DAYS. Otherwise a public-looking
+    name or recorded complaints make it high.
+    """
+    if not row["sending_enabled"]:
+        return "disabled"
+    if row["routes_feedback"]:
         return "ok"
-    if any(h in name.lower() for h in _PUBLIC_HINTS):
+    if row["covered_by"] or row["usage"] == "idle":
+        return "info"
+    if row["complaints"] or any(h in row["config_set"].lower() for h in _PUBLIC_HINTS):
         return "high"
     return "medium"
 
@@ -641,24 +736,67 @@ def _fmt_breakdown(breakdown) -> str:
     return str(breakdown)
 
 
-def build_suppression_coverage(
-    config_sets: list[dict], sends: dict[str, int], complaint_events: dict[str, int]
-) -> list[dict]:
+def _covering_identities(config_set: str, identity_feedback: list[dict], topics: dict[str, dict],
+                         observed: set[str]) -> list[str]:
+    """Identities whose own Bounce/Complaint topic reaches the ledger or a
+    handler and that plausibly send through ``config_set``: those the ledger
+    has seen using it, plus a name match (``alaskaroadtrip-*`` ↔
+    ``alaskaroadtrip.com``). Empty unless *every* candidate is covered, since
+    one uncovered sender makes the set's gap real again."""
+    token = config_set.split("-")[0].lower()
+    candidates = set(observed)
+    for row in identity_feedback:
+        if token and token in row["identity"].lower().split("."):
+            candidates.add(row["identity"])
+    if not candidates:
+        return []
+    covered = {r["identity"] for r in identity_feedback
+               if (r.get("complaint_topic") or r.get("bounce_topic"))
+               and _topic_reaches(topics.get(r.get("complaint_topic") or r.get("bounce_topic")))}
+    return sorted(candidates) if candidates <= covered else []
+
+
+def _topic_reaches(topic: dict | None) -> bool:
+    return bool(topic and (topic.get("ledger_subscribed") or topic.get("consumers")))
+
+
+def build_suppression_coverage(config_sets: list[dict], cs_metrics: dict[str, dict], sns_topics: list[dict],
+                               identity_feedback: list[dict], aggregates: list[dict] | None = None,
+                               ledger_rows: list[dict] | None = None) -> list[dict]:
+    topics = {t["arn"]: t for t in sns_topics}
+    used_by: dict[str, set[str]] = {}
+    for r in aggregates or []:
+        if r.get("identity") and r["identity"] != "(unknown)":
+            used_by.setdefault(r["config_set"], set()).add(r["identity"])
+    for r in ledger_rows or []:
+        if r.get("config_set") and r.get("sending_identity"):
+            used_by.setdefault(r["config_set"], set()).add(r["sending_identity"])
     rows = []
     for c in config_sets:
-        routes = c["forwards_feedback"]
-        rows.append(
-            {
-                "config_set": c["name"],
-                "routes_feedback": routes,
-                "event_types": c["event_types"],
-                "destinations": len(c["destinations"]),
-                "sends": sends.get(c["name"]),
-                "complaints": complaint_events.get(c["name"], 0),
-                "risk": _coverage_risk(c["name"], routes),
-            }
-        )
-    rows.sort(key=lambda x: (x["routes_feedback"], -(x["sends"] or -1), x["config_set"]))
+        m = cs_metrics.get(c["name"]) or {}
+        feedback_topics = [topics.get(a) for a in c.get("feedback_topics") or []]
+        delivery_topics = [topics.get(a) for a in c.get("delivery_topics") or []]
+        row = {
+            "config_set": c["name"],
+            "sending_enabled": c.get("sending_enabled", True),
+            "routes_feedback": c["forwards_feedback"],
+            "reaches_ledger": any(t and t.get("ledger_subscribed") for t in feedback_topics),
+            "reaches_handler": any(t and t.get("consumers") for t in feedback_topics),
+            "delivery_to_ledger": any(t and t.get("ledger_subscribed") for t in delivery_topics),
+            "engagement_types": c.get("engagement_types") or [],
+            "feedback_topics": c.get("feedback_topics") or [],
+            "event_types": c["event_types"],
+            "destinations": len(c["destinations"]),
+            "sends": m.get("sends"),
+            "sends_recent": m.get("sends_recent"),
+            "last_send": m.get("last_send"),
+            "usage": _usage(m.get("sends_recent")),
+            "complaints": m.get("complaints"),
+            "covered_by": _covering_identities(c["name"], identity_feedback, topics, used_by.get(c["name"], set())),
+        }
+        row["risk"] = _coverage_risk(row)
+        rows.append(row)
+    rows.sort(key=lambda x: (x["routes_feedback"], -(x["sends"] if x["sends"] is not None else -1), x["config_set"]))
     return rows
 
 
@@ -673,6 +811,7 @@ def collect_complaint_queue(errors: Errors) -> dict | None:
             AttributeNames=[
                 "ApproximateNumberOfMessages",
                 "ApproximateNumberOfMessagesNotVisible",
+                "ApproximateNumberOfMessagesDelayed",
                 "MessageRetentionPeriod",
                 "KmsMasterKeyId",
             ],
@@ -681,6 +820,7 @@ def collect_complaint_queue(errors: Errors) -> dict | None:
             "name": CFG.complaint_queue,
             "visible": int(attrs.get("ApproximateNumberOfMessages", 0)),
             "in_flight": int(attrs.get("ApproximateNumberOfMessagesNotVisible", 0)),
+            "delayed": int(attrs.get("ApproximateNumberOfMessagesDelayed", 0)),
             "retention_s": int(attrs.get("MessageRetentionPeriod", 0)),
             "kms": bool(attrs.get("KmsMasterKeyId")),
         }
@@ -715,10 +855,14 @@ def collect_unattributed(errors: Errors) -> dict:
     """Recent unattributed feedback from CloudWatch Logs Insights (7-day retention)."""
     logs = _client("logs")
     groups = _resolve_log_groups()
+    # The handler logs plain text, not JSON:
+    #   event=feedback_unattributed kind=bounce domain=gmail.com type=Permanent subtype=General status=5.1.1
+    # so the fields are parsed out of @message. A JSON-field filter here matched
+    # nothing and the section always read 0.
     query = (
-        'fields recipient_domain, feedback_type '
-        '| filter event = "feedback_unattributed" '
-        "| stats count() as events by recipient_domain, feedback_type"
+        "filter @message like /event=feedback_unattributed/ "
+        "| parse @message /kind=(?<kind>\\S+) domain=(?<recipient_domain>\\S+) type=(?<feedback_type>\\S+)/ "
+        "| stats count() as events by kind, recipient_domain, feedback_type"
     )
     end = int(time.time())
     start = end - 7 * 86400
@@ -737,7 +881,9 @@ def collect_unattributed(errors: Errors) -> dict:
             res = logs.get_query_results(queryId=qid)
             if res["status"] in ("Complete", "Failed", "Cancelled"):
                 break
-        if res["status"] == "Complete":
+        if res["status"] != "Complete":
+            errors.add("unattributed", RuntimeError(f"Logs Insights query {res['status']}"))
+        else:
             for row in res["results"]:
                 d = {f["field"]: f["value"] for f in row}
                 try:
@@ -747,6 +893,7 @@ def collect_unattributed(errors: Errors) -> dict:
                 if events:
                     rows.append(
                         {
+                            "kind": (d.get("kind") or "").lower(),
                             "domain": d.get("recipient_domain", ""),
                             "feedback_type": d.get("feedback_type", ""),
                             "events": events,
@@ -776,41 +923,81 @@ def collect_config_sets(errors: Errors) -> list[dict]:
         token = page.get("NextToken")
         if not token:
             break
-    out = []
-    for n in names:
+    def one(n: str) -> dict:
+        r = ses1.describe_configuration_set(
+            ConfigurationSetName=n,
+            ConfigurationSetAttributeNames=["eventDestinations"],
+        )
+        # v2 knows the set's own state: whether it can send at all, whether it
+        # overrides the account suppression list, and reputation metrics.
         try:
-            r = ses1.describe_configuration_set(
-                ConfigurationSetName=n,
-                ConfigurationSetAttributeNames=["eventDestinations"],
-            )
+            v2 = ses.get_configuration_set(ConfigurationSetName=n)
         except (ClientError, BotoCoreError) as e:
-            errors.add(f"config_set:{n}", e)
-            continue
+            errors.add(f"config_set_state:{n}", e)
+            v2 = {}
+        sending_enabled = bool((v2.get("SendingOptions") or {}).get("SendingEnabled", True))
+        suppression = v2.get("SuppressionOptions") or {}
+        reputation = bool((v2.get("ReputationOptions") or {}).get("ReputationMetricsEnabled", False))
         dests = r.get("EventDestinations") or []
         types: list[str] = []
         destinations: list[dict] = []
+        feedback_topics: list[str] = []
+        delivery_topics: list[str] = []
+        engagement: set[str] = set()
         for d in dests:
-            types.extend(t.upper() for t in d.get("MatchingEventTypes", []))
-            entry = {"name": d.get("Name"), "enabled": d.get("Enabled", True),
-                     "event_types": sorted(t.upper() for t in d.get("MatchingEventTypes", []))}
+            enabled = bool(d.get("Enabled", True))
+            d_types = sorted(t.upper() for t in d.get("MatchingEventTypes", []))
+            entry = {"name": d.get("Name"), "enabled": enabled, "event_types": d_types}
             if "SNSDestination" in d:
+                entry["type"] = "sns"
                 entry["sns"] = d["SNSDestination"].get("TopicARN")
-            if "CloudWatchDestination" in d:
+            elif "KinesisFirehoseDestination" in d:
+                entry["type"] = "firehose"
+                entry["firehose"] = d["KinesisFirehoseDestination"].get("DeliveryStreamARN")
+            elif "CloudWatchDestination" in d:
+                entry["type"] = "cloudwatch"
                 entry["cloudwatch"] = [
                     f"{c.get('DimensionName')} ({c.get('DimensionValueSource')})"
                     for c in d["CloudWatchDestination"].get("DimensionConfigurations", [])
                 ]
-            if "KinesisFirehoseDestination" in d:
-                entry["firehose"] = d["KinesisFirehoseDestination"].get("DeliveryStreamARN")
+            else:
+                entry["type"] = "other"
             destinations.append(entry)
-        out.append(
-            {
-                "name": n,
-                "event_types": sorted(set(types)),
-                "destinations": destinations,
-                "forwards_feedback": any(t in ("BOUNCE", "COMPLAINT") for t in types),
-            }
-        )
+            if not enabled:
+                continue  # a disabled destination delivers nothing
+            types.extend(d_types)
+            engagement.update(t for t in d_types if t in ("OPEN", "CLICK"))
+            if entry["type"] == "sns":
+                if any(t in ("BOUNCE", "COMPLAINT") for t in d_types):
+                    feedback_topics.append(entry["sns"])
+                if "DELIVERY" in d_types:
+                    delivery_topics.append(entry["sns"])
+        # A CloudWatch metric is not a handler: nothing hears a complaint that
+        # is only counted. Feedback "routes" when an enabled SNS or Firehose
+        # destination carries BOUNCE or COMPLAINT.
+        forwards = any(d["enabled"] and d["type"] in ("sns", "firehose")
+                       and any(t in ("BOUNCE", "COMPLAINT") for t in d["event_types"]) for d in destinations)
+        return {
+            "name": n,
+            "sending_enabled": sending_enabled,
+            "suppressed_reasons": suppression.get("SuppressedReasons") if "SuppressedReasons" in suppression else None,
+            "reputation_metrics": reputation,
+            "event_types": sorted(set(types)),
+            "engagement_types": sorted(engagement),
+            "destinations": destinations,
+            "feedback_topics": feedback_topics,
+            "delivery_topics": delivery_topics,
+            "forwards_feedback": forwards,
+        }
+
+    out = []
+    with ThreadPoolExecutor(max_workers=4) as ex:
+        futs = {ex.submit(one, n): n for n in names}
+        for f in as_completed(futs):
+            try:
+                out.append(f.result())
+            except (ClientError, BotoCoreError) as e:
+                errors.add(f"config_set:{futs[f]}", e)
     out.sort(key=lambda x: x["name"])
     return out
 
@@ -829,16 +1016,29 @@ def collect_identities(errors: Errors) -> dict:
         if not token:
             break
 
+    # GetEmailIdentity has no SendingEnabled field (it read as False for every
+    # identity); only the list call carries it.
+    sending_by_name = {n: bool(se) for n, _t, se in names}
+
     def detail(name):
         d = ses.get_email_identity(EmailIdentity=name)
+        dkim = d.get("DkimAttributes") or {}
+        tags = {t.get("Key", ""): t.get("Value", "") for t in d.get("Tags") or []}
         return {
             "name": name,
             "type": d.get("IdentityType", ""),
-            "dkim_status": d.get("DkimAttributes", {}).get("Status", ""),
+            "dkim_status": dkim.get("Status", ""),
+            "dkim_signing": bool(dkim.get("SigningEnabled")),
+            "dkim_key_length": dkim.get("CurrentSigningKeyLength", ""),
             "verified": bool(d.get("VerifiedForSendingStatus")),
-            "sending": bool(d.get("SendingEnabled")),
+            "verification_status": d.get("VerificationStatus", ""),
+            "sending": sending_by_name.get(name, False),
             "mail_from_domain": (d.get("MailFromAttributes") or {}).get("MailFromDomain", ""),
             "mail_from_status": (d.get("MailFromAttributes") or {}).get("MailFromDomainStatus", ""),
+            "default_config_set": d.get("ConfigurationSetName", ""),
+            "feedback_forwarding": bool(d.get("FeedbackForwardingStatus")),
+            "project": tags.get("Project", ""),
+            "tags": tags,
         }
 
     rows = []
@@ -855,21 +1055,36 @@ def collect_identities(errors: Errors) -> dict:
     for region in [r.strip() for r in EXTRA_REGIONS if r.strip() and r.strip() != REGION]:
         try:
             s = _client("sesv2", region=region)
-            page = s.list_email_identities()
+            idents, token = [], None
+            while True:
+                kw = {"PageSize": 100}
+                if token:
+                    kw["NextToken"] = token
+                page = s.list_email_identities(**kw)
+                idents.extend(page.get("EmailIdentities", []))
+                token = page.get("NextToken")
+                if not token:
+                    break
+            acc = s.get_account()
             extra.append(
                 {
                     "region": region,
-                    "count": len(page.get("EmailIdentities", [])),
-                    "names": [i["IdentityName"] for i in page.get("EmailIdentities", [])],
+                    "count": len(idents),
+                    "names": [i["IdentityName"] for i in idents],
+                    "production_access": bool(acc.get("ProductionAccessEnabled")),
+                    "suppressed_reasons": (acc.get("SuppressionAttributes") or {}).get("SuppressedReasons", []),
                 }
             )
         except (ClientError, BotoCoreError) as e:
             errors.add(f"identities_region:{region}", e)
 
+    status = {r["name"]: (r["verification_status"] or ("SUCCESS" if r["verified"] else "FAILED")) for r in rows}
     return {
-        "verified": sum(1 for r in rows if r["verified"]),
-        "failed": sum(1 for r in rows if not r["verified"] and r["dkim_status"] != "PENDING"),
-        "pending": sum(1 for r in rows if r["dkim_status"] == "PENDING"),
+        "verified": sum(1 for s in status.values() if s == "SUCCESS"),
+        "failed": sum(1 for s in status.values() if s in ("FAILED", "TEMPORARY_FAILURE", "NOT_STARTED")),
+        "pending": sum(1 for s in status.values() if s == "PENDING"),
+        "sending": sum(1 for r in rows if r["verified"] and r["sending"]),
+        "verified_not_sending": sum(1 for r in rows if r["verified"] and not r["sending"]),
         "rows": rows,
         "other_regions": extra,
     }
@@ -921,9 +1136,27 @@ def collect_identity_feedback(errors: Errors) -> list[dict]:
     return out
 
 
+HANDLER_PROTOCOLS = ("lambda", "https", "sqs")
+
+
+def _is_ledger(sub: dict) -> bool:
+    return sub.get("protocol") == "lambda" and str(sub.get("endpoint") or "").split(":")[-1].endswith(CFG.ledger_function)
+
+
 def collect_sns(errors: Errors) -> list[dict]:
+    """Every SNS topic with its subscriptions, and what they mean for feedback:
+    ``ledger_subscribed`` when the ledger ingest Lambda listens, ``consumers``
+    for other lambda/https/sqs handlers (an email-only topic is not a handler),
+    and ``pending`` subscriptions that deliver nothing until confirmed."""
     sns = _client("sns")
-    topics = sns.list_topics().get("Topics", [])
+    topics, token = [], None
+    while True:
+        kw = {"NextToken": token} if token else {}
+        page = sns.list_topics(**kw)
+        topics.extend(page.get("Topics", []))
+        token = page.get("NextToken")
+        if not token:
+            break
     out = []
     for t in topics:
         arn = t["TopicArn"]
@@ -936,11 +1169,18 @@ def collect_sns(errors: Errors) -> list[dict]:
                 kw["NextToken"] = token
             page = sns.list_subscriptions_by_topic(**kw)
             for s in page.get("Subscriptions", []):
-                subs.append({"protocol": s.get("Protocol"), "endpoint": s.get("Endpoint")})
+                subs.append({"protocol": s.get("Protocol"), "endpoint": s.get("Endpoint"),
+                             "pending": s.get("SubscriptionArn") == "PendingConfirmation"})
             token = page.get("NextToken")
             if not token:
                 break
-        out.append({"name": name, "arn": arn, "subscribers": subs})
+        live = [s for s in subs if not s["pending"]]
+        out.append({
+            "name": name, "arn": arn, "subscribers": subs,
+            "ledger_subscribed": any(_is_ledger(s) for s in live),
+            "consumers": [s["endpoint"] for s in live if s["protocol"] in HANDLER_PROTOCOLS and not _is_ledger(s)],
+            "pending": [s["endpoint"] for s in subs if s["pending"]],
+        })
     out.sort(key=lambda x: x["name"])
     return out
 
@@ -967,7 +1207,6 @@ def collect_all(cache_dir: Path | None = None, resolver=None) -> dict:
     with ThreadPoolExecutor(max_workers=6) as ex:
         f_posture = ex.submit(guard, "posture", collect_posture, {})
         f_metrics = ex.submit(guard, "metrics", collect_metrics, {})
-        f_cscomp = ex.submit(guard, "config_set_complaints", collect_config_set_complaints, [])
         f_complainants = ex.submit(guard, "complainants", collect_complainants, [])
         f_appstores = ex.submit(guard, "app_stores", collect_app_stores, {"counts": [], "records": []})
         f_unattr = ex.submit(guard, "unattributed", collect_unattributed, {"log_groups": [], "rows": []})
@@ -977,30 +1216,32 @@ def collect_all(cache_dir: Path | None = None, resolver=None) -> dict:
         f_sns = ex.submit(guard, "sns", collect_sns, [])
         f_queue = ex.submit(guard, "complaint_queue", collect_complaint_queue, None)
         f_supplist = ex.submit(guard, "suppression_list", collect_suppression_list, None)
-        f_cssends = ex.submit(guard, "config_set_sends", collect_config_set_sends, {})
         f_ledger = ex.submit(
             guard,
             "ledger",
             collect_ledger,
             {"configured": False, "table": None, "records": [], "oldest": None, "newest": None},
         )
+        f_aggs = ex.submit(guard, "ledger_aggregates", lambda e: collect_ledger_aggregates(e, cache_dir), [])
+
+        config_sets = f_configsets.result()
+        # per-set metrics need the set names and their destinations first
+        f_csmetrics = ex.submit(guard, "config_set_metrics", lambda e: collect_config_set_metrics(e, config_sets), {})
 
         posture = f_posture.result()
         metrics = f_metrics.result()
-        cs_complaints = f_cscomp.result()
         complainants = f_complainants.result()
         app_stores = f_appstores.result()
         unattributed_raw = f_unattr.result()
-        config_sets = f_configsets.result()
         identities = f_identities.result()
         identity_feedback = f_idfb.result()
         sns_topics = f_sns.result()
         queue = f_queue.result()
         suppression_list = f_supplist.result()
-        cs_sends = f_cssends.result()
         ledger = f_ledger.result()
-        f_aggs = ex.submit(guard, "ledger_aggregates", lambda e: collect_ledger_aggregates(e, cache_dir), [])
         aggregates = f_aggs.result()
+        cs_metrics = f_csmetrics.result()
+    cs_complaints = config_set_complaints(cs_metrics)
 
     suppression = app_stores.get("counts", [])
     suppression_records = app_stores.get("records", [])
@@ -1027,15 +1268,16 @@ def collect_all(cache_dir: Path | None = None, resolver=None) -> dict:
     else:
         retention = {"cloudwatch_days": RETENTION_DAYS, "oldest_expires": None, "newest_expires": None}
 
-    complaint_events = {c["config_set"]: c["events"] for c in cs_complaints}
-    suppression_coverage = build_suppression_coverage(config_sets, cs_sends, complaint_events)
+    suppression_coverage = build_suppression_coverage(config_sets, cs_metrics, sns_topics, identity_feedback,
+                                                      aggregates, ledger.get("records", []))
 
     # A single recipient-level view of every complaint an application store has
     # retained, so the account-wide CloudWatch count can be attributed to a
     # project (and to test artefacts vs. real complainants). When the self-owned
     # ledger is deployed it is the primary, deduped source; store rows are kept
-    # for anything it does not cover yet.
-    ledger_records = ledger.get("records", [])
+    # for anything it does not cover yet. The ledger also holds permanent
+    # bounces; only its COMPLAINT rows belong in a list of complainants.
+    ledger_records = [r for r in ledger.get("records", []) if (r.get("event_type") or "").upper() == "COMPLAINT"]
     store_records = list(suppression_records)
     for c in complainants:
         store_records.append(
@@ -1059,11 +1301,17 @@ def collect_all(cache_dir: Path | None = None, resolver=None) -> dict:
         ledger_records, store_records
     )
     simulator_records = sum(1 for r in complaint_records if r["simulator"])
+    # A store row can stand for several events (``hits``); the CloudWatch count
+    # is per event, so the simulator share of the account total uses hits.
+    simulator_hits = sum(int(r.get("hits") or 1) for r in complaint_records if r["simulator"])
+    cloudwatch_recorded = metrics.get("total_complaints")
     attribution = {
-        "cloudwatch_recorded": metrics.get("total_complaints"),
+        "cloudwatch_recorded": cloudwatch_recorded,
+        "real_cloudwatch": (cloudwatch_recorded - simulator_hits) if cloudwatch_recorded is not None else None,
         "records": len(complaint_records),
         "real_records": len(complaint_records) - simulator_records,
         "simulator_records": simulator_records,
+        "simulator_hits": simulator_hits,
         "ledger_records": len(kept_ledger),
         "store_records": len(kept_store),
         "latest_record": complaint_records[0]["last_seen"] if complaint_records else None,
@@ -1088,19 +1336,27 @@ def collect_all(cache_dir: Path | None = None, resolver=None) -> dict:
             }
         )
     if CFG.complaint_queue:
+        # The queue is the SNS subscriptions' dead-letter queue: it holds
+        # notifications of every event type whose https delivery failed, not
+        # complaints, so it has no complaint count.
+        q = queue or {}
         finish_reason_rows.append(
             {
-                "store": f"SQS {CFG.complaint_queue} (retained raw feedback)",
-                "complaints": (queue or {}).get("visible"),
-                "detail": "governance-controlled DLQ; bodies not read",
+                "store": f"SQS {CFG.complaint_queue} (SNS delivery DLQ)",
+                "complaints": None,
+                "detail": (f"{q.get('visible', 0)} undelivered notification(s) waiting, {q.get('in_flight', 0)} in flight"
+                           if queue else "not readable") + "; bodies not read",
             }
         )
+    unattr_complaints = sum(u["events"] for u in unattributed if u.get("kind") == "complaint")
+    unattr_total = sum(u["events"] for u in unattributed)
     finish_reason_rows.append(
         {
             "store": "CloudWatch Logs " + (", ".join(log_groups) if log_groups else "(no matching log group)")
             + " (7-day retention)",
-            "complaints": sum(u["events"] for u in unattributed) if unattributed else 0,
-            "detail": "unattributed feedback_unattributed events, last 7 days",
+            "complaints": unattr_complaints,
+            "detail": f"{unattr_total} unattributed feedback event(s) in the last 7 days"
+                      + (f" ({unattr_total - unattr_complaints} bounces)" if unattr_total else ""),
         }
     )
 
@@ -1108,7 +1364,7 @@ def collect_all(cache_dir: Path | None = None, resolver=None) -> dict:
         deliverability = build_deliverability(
             ledger=ledger, aggregates=aggregates, identities=identities, coverage=suppression_coverage,
             config_sets=config_sets, identity_feedback=identity_feedback, errors=errors,
-            cache_dir=cache_dir, resolver=resolver,
+            cache_dir=cache_dir, resolver=resolver, metrics=metrics, posture=posture, sns_topics=sns_topics,
         )
     except Exception as e:  # noqa: BLE001 - never let the new section take the whole report down
         errors.add("deliverability", e)
@@ -1150,27 +1406,60 @@ def collect_all(cache_dir: Path | None = None, resolver=None) -> dict:
     return model
 
 
+def unattributed_sends(metrics: dict, coverage: list[dict], days: int = RECENT_DAYS) -> dict:
+    """Account sends in the last ``days`` that no configuration set accounts for.
+
+    Those messages carry no event destination, so their bounces and complaints
+    arrive only as forwarded email (if at all). ``None`` values mean the share
+    cannot be computed because some active set's usage is unknown.
+    """
+    cutoff = (dt.datetime.now(dt.timezone.utc).date() - dt.timedelta(days=days - 1)).isoformat()
+    account = sum(int(r.get("count") or 0) for r in metrics.get("sends_by_day") or [] if r.get("date", "") >= cutoff)
+    known = [c for c in coverage if c.get("sends_recent") is not None]
+    unknown = [c["config_set"] for c in coverage if c.get("sends_recent") is None and c.get("sending_enabled", True)]
+    tagged = sum(c["sends_recent"] for c in known)
+    out = {"days": days, "account_sends": account, "config_set_sends": tagged, "unknown_sets": unknown}
+    if unknown:
+        out.update(unattributed=None, share=None)
+    else:
+        unattributed = max(0, account - tagged)
+        out.update(unattributed=unattributed, share=(unattributed / account) if account else 0.0)
+    return out
+
+
 def build_deliverability(*, ledger, aggregates, identities, coverage, config_sets, identity_feedback,
-                         errors: Errors, cache_dir: Path | None = None, resolver=None, today=None) -> dict:
+                         errors: Errors, cache_dir: Path | None = None, resolver=None, today=None,
+                         metrics: dict | None = None, posture: dict | None = None,
+                         sns_topics: list[dict] | None = None) -> dict:
     """VDM-equivalent breakdowns and Advisor findings (VDM itself stays off)."""
     today = today or dt.datetime.now(dt.timezone.utc).date()
+    metrics = metrics or {}
     if resolver is None:
         try:
             resolver = _advisor.make_resolver()
         except Exception as e:  # noqa: BLE001 - DNS library or config missing
             errors.add("advisor_dns", e)
             resolver = None
+    sent_24h = ((posture or {}).get("send_quota") or {}).get("sent_24h")
     # authentication checks get first call on the shared DNS budget
-    auth = _advisor.auth_findings((identities or {}).get("rows", []), resolver, REGION) if resolver else ([], {})
+    auth = _advisor.auth_findings((identities or {}).get("rows", []), resolver, REGION,
+                                   CFG.app_dkim_projects, app_dkim_mx=CFG.app_dkim_mx,
+                                   test_identities=CFG.test_identities, sent_24h=sent_24h) if resolver else ([], {})
     classifier = Classifier((cache_dir / "providers-mx-cache.json") if cache_dir else None,
                             getattr(resolver, "mx", None))
     breakdowns = _breakdowns.build_all_ranges(aggregates, ledger.get("records", []), today,
                                               classify=classifier, configured=bool(ledger.get("configured")))
     classifier.save()
     breakdowns["classification"] = classifier.stats
+    unattributed = unattributed_sends(metrics, coverage)
     advisor = _advisor.run(identities=(identities or {}).get("rows", []), coverage=coverage,
                            config_sets=config_sets, identity_feedback=identity_feedback,
-                           window=breakdowns["ranges"]["30"], resolver=resolver, region=REGION, auth=auth)
+                           window=breakdowns["ranges"]["30"], resolver=resolver, region=REGION, auth=auth,
+                           sns_topics=sns_topics or [], engagement_tracking=CFG.engagement_tracking,
+                           account_rates={"complaint": (metrics.get("latest_rate") or {}).get("rate"),
+                                          "bounce": (metrics.get("latest_bounce_rate") or {}).get("rate")},
+                           unattributed=unattributed, ledger_rows=ledger.get("records", []), aggregates=aggregates)
+    advisor["unattributed_sends"] = unattributed
     log.info("deliverability: %d counters, classification %s, %d findings, dns %s",
              len(aggregates), classifier.stats, len(advisor["findings"]), advisor["dns"])
     return {"breakdowns": breakdowns, "advisor": advisor}
