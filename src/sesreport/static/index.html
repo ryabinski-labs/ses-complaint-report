@@ -946,7 +946,7 @@ function attentionItems() {
   for (const group of byKind.values()) {
     const f = group[0];
     if (group.length < 3) {
-      for (const g of group) items.push({sev:g.severity, ic:KIND_ICON[g.kind]||'alert', t:g.title, d:g.detail, fix:registerBrief(g.id, g.resource, g.brief)});
+      for (const g of group) items.push({sev:g.severity, ic:KIND_ICON[g.kind]||'alert', t:g.title, d:g.detail, checked_at:g.checked_at, fix:registerBrief(g.id, g.resource, g.brief)});
       continue;
     }
     const names = group.map(g => String(g.resource).replace(/`/g, "'").replace(/\s+/g, ' '));
@@ -966,7 +966,7 @@ function attentionItems() {
       spf:['domain','domains'], dmarc:['domain','domains'], routing:['config set','config sets'], ledger_gap:['config set','config sets'],
       publishing:['config set','config sets'], tracking:['config set','config sets'], sns_pending:['topic','topics']}[f.kind] || ['row','rows'];
     items.push({sev:f.severity, ic:KIND_ICON[f.kind]||'alert', t:`${label} for ${plural(group.length, noun[0], noun[1])}`,
-      d:`${list}. ${f.detail}`, fix:(() => {
+      d:`${list}. ${f.detail}`, checked_at:f.checked_at, fix:(() => {
         const title = `${label} for ${plural(group.length, noun[0], noun[1])}`;
         const md = `# Fix: ${title}\n\nThis brief covers ${group.length} ${noun[1]}: ${names.join(', ')}. Apply each section below.\n\n---\n\n`
           + group.map(g => g.brief).join('\n---\n\n');
@@ -999,7 +999,7 @@ function renderAttention() {
   const urgent = items.filter(i=>i.sev!=='info').length;
   const one = i => `<div class="attn-item sev-${i.sev}">
       <span class="ai">${icon(i.ic)}</span>
-      <div style="min-width:0"><div class="at">${esc(i.t)}</div><div class="ad">${esc(i.d)}</div></div>
+      <div style="min-width:0"><div class="at">${esc(i.t)}</div><div class="ad">${esc(i.d)}${i.checked_at?` <span class="muted">· checked ${fmtTs(i.checked_at)}</span>`:''}</div></div>
       ${i.fix?fixButton(i.fix):`<span class="tag ${i.sev==='high'?'bad':i.sev==='medium'?'warn':'info'}">${i.sev==='high'?'act now':i.sev==='medium'?'review':'note'}</span>`}
     </div>`;
   const SHOW = 8, head = items.slice(0, SHOW), rest = items.slice(SHOW);

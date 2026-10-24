@@ -8,7 +8,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Each Advisor finding carries a `checked_at` timestamp, shown in Needs
+  attention as "checked …", so a cached snapshot cannot look like a live check.
 - OpenSSF Best Practices badge (passing) in the README.
+
+### Fixed
+
+- README no longer claims DNS results are cached for 7 days: DMARC, SPF and
+  DKIM TXT records are re-queried on every refresh; only MX provider
+  classification is cached.
 
 ## [1.1.1] - 2026-10-24
 
