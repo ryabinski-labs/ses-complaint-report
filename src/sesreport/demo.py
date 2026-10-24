@@ -193,9 +193,11 @@ def demo_model(seed: int = 7) -> dict:
             "pending": 0,
             "rows": [
                 {"name": f"send{i}.example.com", "type": "DOMAIN",
-                 "dkim_status": "FAILED" if i >= 34 else "SUCCESS", "verified": i < 34, "sending": i < 34,
+                 "dkim_status": "FAILED" if i >= 34 else "NOT_STARTED" if i < 4 else "SUCCESS", "verified": i < 34, "sending": i < 34,
                  "mail_from_domain": "" if i in (3, 7) else f"bounce.send{i}.example.com",
-                 "mail_from_status": "" if i in (3, 7) else "SUCCESS"}
+                 "mail_from_status": "" if i in (3, 7) else "SUCCESS",
+                 # send0-2 sign in-app (WebMail) and send3 is unsigned by SES with no app tag
+                 "project": "WebMail" if i < 3 else ""}
                 for i in range(40)
             ],
             "other_regions": [{"region": "us-west-2", "count": 1, "names": ["mail.demo.example"]}],

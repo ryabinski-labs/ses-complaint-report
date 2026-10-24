@@ -11,6 +11,7 @@ Delivery/Open/Click publishing. Every finding carries a Markdown fix brief.
 from __future__ import annotations
 
 import time
+from collections.abc import Iterable
 
 from . import fixbriefs
 
@@ -104,19 +105,37 @@ def _dns_note(exc: Exception) -> str:
     return NOT_CHECKED_BUDGET if isinstance(exc, DnsBudget) else NOT_CHECKED_TIMEOUT
 
 
-def auth_findings(identities: list[dict], resolver, region: str = "") -> tuple[list[dict], dict]:
+def auth_findings(identities: list[dict], resolver, region: str = "",
+                  app_signed: Iterable[str] = ("WebMail",)) -> tuple[list[dict], dict]:
     """DKIM, MAIL FROM/SPF and DMARC findings for DOMAIN identities, plus a
-    per-domain check grid for the Authentication panel."""
+    per-domain check grid for the Authentication panel.
+
+    SES's DKIM status only says whether *SES* signs. NOT_STARTED means SES's
+    Easy DKIM was never set up, which is correct when the sending app signs the
+    message itself before SendRawEmail (Folio/WebMail does). Identities whose
+    Project tag is in ``app_signed`` count as signed by the app; other
+    NOT_STARTED identities get an info note, not a high "fails DMARC" finding.
+    """
     findings: list[dict] = []
     checks: dict[str, dict] = {}
+    app_signed = {p.lower() for p in app_signed if p}
     for ident in identities:
         if (ident.get("type") or "").upper() not in ("DOMAIN", ""):
             continue
         domain = ident["name"]
         row = checks.setdefault(domain, {})
         status = ident.get("dkim_status") or ""
+        project = ident.get("project") or ""
         if status == "SUCCESS":
             row["dkim"] = "pass"
+        elif status == "NOT_STARTED" and project.lower() in app_signed:
+            row["dkim"] = f"pass · signed by {project}"
+        elif status == "NOT_STARTED":
+            row["dkim"] = "SES not signing"
+            findings.append(_finding("dkim_unsigned", "info", domain, f"SES is not DKIM-signing {domain}",
+                                     "SES's built-in DKIM is off for this identity. That is expected if the app that "
+                                     "sends this mail signs it itself; otherwise its mail fails DMARC alignment.",
+                                     fixbriefs.dkim_unsigned_brief(domain, region)))
         else:
             row["dkim"] = "fail"
             findings.append(_finding("dkim", "high", domain, f"DKIM is {status or 'not set up'} for {domain}",
@@ -242,9 +261,10 @@ RANK = {"high": 0, "medium": 1, "info": 2}
 
 
 def run(*, identities: list[dict], coverage: list[dict], config_sets: list[dict], identity_feedback: list[dict],
-        window: dict | None, resolver, region: str = "", floor: int = 1000, auth=None) -> dict:
+        window: dict | None, resolver, region: str = "", floor: int = 1000, auth=None,
+        app_signed: Iterable[str] = ("WebMail",)) -> dict:
     if auth is None:
-        auth = auth_findings(identities, resolver, region) if resolver else ([], {})
+        auth = auth_findings(identities, resolver, region, app_signed) if resolver else ([], {})
     findings, checks = list(auth[0]), auth[1]
     findings += routing_findings(coverage, region)
     findings += publishing_findings(config_sets, identity_feedback, region)

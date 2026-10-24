@@ -158,6 +158,31 @@ def dkim_brief(identity: str, status: str, region: str = "") -> str:
     )
 
 
+def dkim_unsigned_brief(identity: str, region: str = "") -> str:
+    identity_md = _n(identity)
+    return brief(
+        f"confirm who DKIM-signs {identity_md}",
+        problem=f"SES's built-in DKIM is NOT_STARTED for `{identity_md}`, so SES adds no `d={identity_md}` signature.",
+        resource=f"SES identity {identity_md}", region=region,
+        why="This is only a problem if nothing else signs the mail. Apps that sign before SendRawEmail (for example "
+            "Folio/WebMail with its own selector) are correct to leave Easy DKIM off; enabling it would only add a "
+            "second set of DNS records.",
+        steps=[f"Send a test message from `{identity_md}` and open its raw headers at the recipient.",
+               f"If a `DKIM-Signature` with `d={identity_md}` is present and `Authentication-Results` shows "
+               "`dkim=pass`, the app signs: tag the identity with its `Project` so the dashboard counts it as signed.",
+               "If there is no aligned signature, enable Easy DKIM and publish the three CNAMEs SES returns."],
+        commands=[f"aws sesv2 get-email-identity --email-identity {q(identity)}{_region_flag(region)} "
+                  "--query 'DkimAttributes'",
+                  "# only if no app signs this domain:",
+                  f"aws sesv2 put-email-identity-dkim-attributes --email-identity {q(identity)}"
+                  f"{_region_flag(region)} --signing-enabled"],
+        verify=["A received message shows `dkim=pass` with `header.d` equal to the domain.",
+                "The dashboard's Authentication grid shows a tick for DKIM."],
+        rollback=["If Easy DKIM was enabled: run `put-email-identity-dkim-attributes --no-signing-enabled` and "
+                  "remove its CNAME records."],
+    )
+
+
 def mail_from_brief(domain: str, region: str = "") -> str:
     domain_md = _n(domain)
     mail_from = f"bounce.{domain_md}"

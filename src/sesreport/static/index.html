@@ -652,7 +652,7 @@ function routingFixId(cs) {
   const f = (state.model.advisor?.findings || []).find(x => x.kind === 'routing' && x.resource === cs);
   return f ? registerBrief(f.id, f.resource, f.brief) : registerBrief(`routing:${cs}`, cs, routingBriefJs(cs));
 }
-const KIND_ICON = {dkim:'shield', mail_from:'route', spf:'shield', dmarc:'shield', routing:'route', publishing:'activity',
+const KIND_ICON = {dkim:'shield', dkim_unsigned:'shield', mail_from:'route', spf:'shield', dmarc:'shield', routing:'route', publishing:'activity',
   identity_delivery:'server', complaint_rate:'alert', bounce_rate:'alert'};
 
 /* ------------------------------------------------------------------ tooltip */
@@ -931,11 +931,11 @@ function attentionItems() {
     }
     const names = group.map(g => String(g.resource).replace(/`/g, "'").replace(/\s+/g, ' '));
     const list = names.length > 4 ? `${names.slice(0, 3).join(', ')} and ${names.length - 3} more` : names.join(', ');
-    const label = {dkim:'DKIM is not passing', mail_from:'No custom MAIL FROM', spf:'SPF misses amazonses.com', dmarc:'DMARC needs work',
+    const label = {dkim:'DKIM is not passing', dkim_unsigned:'SES is not DKIM-signing', mail_from:'No custom MAIL FROM', spf:'SPF misses amazonses.com', dmarc:'DMARC needs work',
       routing:'Config sets do not route BOUNCE/COMPLAINT', publishing:'Config sets do not publish Delivery/Open/Click',
       identity_delivery:'Identities without Delivery notifications', complaint_rate:'Complaint rate over the line', bounce_rate:'Bounce rate over the line'}[f.kind] || f.title;
 
-    const noun = {dkim:['identity','identities'], mail_from:['identity','identities'], identity_delivery:['identity','identities'],
+    const noun = {dkim:['identity','identities'], dkim_unsigned:['identity','identities'], mail_from:['identity','identities'], identity_delivery:['identity','identities'],
       spf:['domain','domains'], dmarc:['domain','domains'], routing:['config set','config sets'], publishing:['config set','config sets']}[f.kind] || ['row','rows'];
     items.push({sev:f.severity, ic:KIND_ICON[f.kind]||'alert', t:`${label} for ${plural(group.length, noun[0], noun[1])}`,
       d:`${list}. ${f.detail}`, fix:(() => {
@@ -1445,16 +1445,16 @@ function renderAuthGrid() {
   const doms = Object.keys(checks).sort();
   if (!doms.length) return '';
   const cell = (v, label) => {
-    const ok = v === 'pass';
+    const ok = String(v||'').startsWith('pass');
     const dns = String(v||'').startsWith('not checked');
     const cls = ok ? 'y' : dns ? 'o' : 'n';
     const ic = ok ? 'tick' : dns ? 'minus' : 'cross';
-    return `<td data-label="${label}"><span class="mx ${cls}" title="${esc(v)}">${icon(ic)}<span class="sr">${esc(v)}</span></span>${ok?'':` <span class="cell-sub" style="display:inline">${esc(v)}</span>`}</td>`;
+    return `<td data-label="${label}"><span class="mx ${cls}" title="${esc(v)}">${icon(ic)}<span class="sr">${esc(v)}</span></span>${v==='pass'?'':` <span class="cell-sub" style="display:inline">${esc(ok?String(v).replace(/^pass · /,''):v)}</span>`}</td>`;
   };
-  const failing = doms.filter(d => ['dkim','spf','dmarc'].some(k => checks[d][k] && checks[d][k] !== 'pass'));
+  const failing = doms.filter(d => ['dkim','spf','dmarc'].some(k => checks[d][k] && !String(checks[d][k]).startsWith('pass')));
   const row = d => `<tr><td class="mono">${esc(d)}</td>${cell(checks[d].dkim,'DKIM')}${cell(checks[d].spf,'SPF')}${cell(checks[d].dmarc,'DMARC')}<td data-label="MAIL FROM" class="mono">${esc(checks[d].mail_from||'—')}</td></tr>`;
   return `<div class="box"><h3 style="margin-top:0">Authentication · ${plural(doms.length,'sending domain')}</h3>
-    <p class="sub" style="margin-top:0">DKIM from SES; SPF (custom MAIL FROM) and DMARC from public DNS. ${failing.length ? `${plural(failing.length,'domain')} need attention.` : 'All domains pass.'}</p>
+    <p class="sub" style="margin-top:0">DKIM from SES, or from the sending app for identities tagged with an app-signed Project; SPF (custom MAIL FROM) and DMARC from public DNS. ${failing.length ? `${plural(failing.length,'domain')} need attention.` : 'All domains pass.'}</p>
     <details class="more" ${failing.length && failing.length <= 8 ? 'open' : ''}><summary>Show the authentication grid</summary>
     <div class="matrixwrap" style="margin-top:10px"><table class="matrix auth">
       <thead><tr><th>Domain</th><th>DKIM</th><th>SPF</th><th>DMARC</th><th>MAIL FROM</th></tr></thead>

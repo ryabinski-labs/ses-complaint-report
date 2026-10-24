@@ -829,6 +829,16 @@ def collect_identities(errors: Errors) -> dict:
         if not token:
             break
 
+    def project_tag(name) -> str:
+        # Optional: a missing ses:ListTagsForResource grant only loses the
+        # "signed by the app" hint, so it must not drop the identity.
+        try:
+            arn = f"arn:aws:ses:{REGION}:{_account_id()}:identity/{name}"
+            tags = ses.list_tags_for_resource(ResourceArn=arn).get("Tags", [])
+        except (ClientError, BotoCoreError):
+            return ""
+        return next((t.get("Value", "") for t in tags if t.get("Key") == "Project"), "")
+
     def detail(name):
         d = ses.get_email_identity(EmailIdentity=name)
         return {
@@ -839,6 +849,7 @@ def collect_identities(errors: Errors) -> dict:
             "sending": bool(d.get("SendingEnabled")),
             "mail_from_domain": (d.get("MailFromAttributes") or {}).get("MailFromDomain", ""),
             "mail_from_status": (d.get("MailFromAttributes") or {}).get("MailFromDomainStatus", ""),
+            "project": project_tag(name),
         }
 
     rows = []
@@ -1161,7 +1172,8 @@ def build_deliverability(*, ledger, aggregates, identities, coverage, config_set
             errors.add("advisor_dns", e)
             resolver = None
     # authentication checks get first call on the shared DNS budget
-    auth = _advisor.auth_findings((identities or {}).get("rows", []), resolver, REGION) if resolver else ([], {})
+    auth = _advisor.auth_findings((identities or {}).get("rows", []), resolver, REGION,
+                                   CFG.app_dkim_projects) if resolver else ([], {})
     classifier = Classifier((cache_dir / "providers-mx-cache.json") if cache_dir else None,
                             getattr(resolver, "mx", None))
     breakdowns = _breakdowns.build_all_ranges(aggregates, ledger.get("records", []), today,

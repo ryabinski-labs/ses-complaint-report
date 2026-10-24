@@ -54,6 +54,10 @@ class Config:
     complaint_queue: str = ""
     suppression_tables: list[str] = field(default_factory=list)
     ledger_table: str = ""
+    # Identities tagged Project=<one of these> are DKIM-signed by the sending
+    # app before SES (Folio/WebMail signs in-app), so SES's own DKIM status
+    # is expected to be NOT_STARTED for them.
+    app_dkim_projects: list[str] = field(default_factory=lambda: ["WebMail"])
     redact_emails: bool = False
     demo: bool = False
     host: str = "127.0.0.1"
@@ -76,6 +80,7 @@ def load() -> Config:
         complaint_queue=os.environ.get("SESREPORT_COMPLAINT_QUEUE", ""),
         suppression_tables=_split(os.environ.get("SESREPORT_SUPPRESSION_TABLES", "")),
         ledger_table=os.environ.get("SESREPORT_LEDGER_TABLE", ""),
+        app_dkim_projects=_split(os.environ.get("SESREPORT_APP_DKIM_PROJECTS", "WebMail")),
         redact_emails=_bool("SESREPORT_REDACT_EMAILS", False),
         demo=_bool("SESREPORT_DEMO", False),
         host=os.environ.get("SESREPORT_HOST", "127.0.0.1"),
