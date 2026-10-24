@@ -65,36 +65,36 @@ def test_breakdowns_ignore_suppression_list_bounces() -> None:
 
 
 def test_only_suppression_bounces_make_identity_delivery_info_not_medium() -> None:
-    idfb = [{"identity": "alaskaroadtrip.com", "bounce_topic": TOPIC,
+    idfb = [{"identity": "roadtrip.example", "bounce_topic": TOPIC,
              "complaint_topic": TOPIC, "delivery_topic": None}]
-    rows = [{"sending_identity": "alaskaroadtrip.com", "event_type": "BOUNCE",
+    rows = [{"sending_identity": "roadtrip.example", "event_type": "BOUNCE",
              "feedback_type": "Permanent/OnAccountSuppressionList"} for _ in range(27)]
     activity = advisor.identity_activity(rows, [])
     findings = advisor.publishing_findings(
-        [], idfb, sns_topics=[_topic()], identities=[_identity("alaskaroadtrip.com")],
+        [], idfb, sns_topics=[_topic()], identities=[_identity("roadtrip.example")],
         identity_activity=activity)
     assert [(f["kind"], f["severity"]) for f in findings] == [("identity_delivery", "info")]
 
 
 def test_a_real_bounce_still_raises_the_identity_delivery_severity() -> None:
-    idfb = [{"identity": "alaskaroadtrip.com", "bounce_topic": TOPIC,
+    idfb = [{"identity": "roadtrip.example", "bounce_topic": TOPIC,
              "complaint_topic": TOPIC, "delivery_topic": None}]
-    rows = [{"sending_identity": "alaskaroadtrip.com", "event_type": "BOUNCE",
+    rows = [{"sending_identity": "roadtrip.example", "event_type": "BOUNCE",
              "feedback_type": "Permanent/General"}]
     activity = advisor.identity_activity(rows, [])
     findings = advisor.publishing_findings(
-        [], idfb, sns_topics=[_topic()], identities=[_identity("alaskaroadtrip.com")],
+        [], idfb, sns_topics=[_topic()], identities=[_identity("roadtrip.example")],
         identity_activity=activity)
     assert [(f["kind"], f["severity"]) for f in findings] == [("identity_delivery", "medium")]
 
 
 def test_identity_delivery_brief_prefers_config_set_attribution() -> None:
     text = fixbriefs.identity_delivery_brief(
-        "alaskaroadtrip.com", TOPIC, "us-east-1", ["https://api.alaska/ses"])
+        "roadtrip.example", TOPIC, "us-east-1", ["https://api.roadtrip/ses"])
     assert "create-configuration-set-event-destination" in text
     assert "put-email-identity-configuration-set-attributes" in text
     assert "does not publish the `ses:configuration-set` tag" in text
-    assert "other subscribers (https://api.alaska/ses)" in text
+    assert "other subscribers (https://api.roadtrip/ses)" in text
     # Identity-level Delivery is offered only after the config-set path.
     assert text.index("create-configuration-set-event-destination") < text.index(
         "set-identity-notification-topic")

@@ -2,9 +2,9 @@
 # Copyright (c) 2026 Yoni Ryabinski
 
 """SES's DKIM status only says whether SES signs. Apps that sign before
-SendRawEmail (Folio/WebMail) leave Easy DKIM at NOT_STARTED, and that must not
-be reported as "fails DMARC" (regression: getbankinabox.com showed 100/100 in
-Folio while this dashboard flagged it high)."""
+SendRawEmail (a webmail app) leave Easy DKIM at NOT_STARTED, and that must not
+be reported as "fails DMARC" (regression: a domain showed 100/100 in
+the app while this dashboard flagged it high)."""
 
 from __future__ import annotations
 
@@ -41,9 +41,9 @@ def test_app_signed_project_match_is_case_insensitive_and_configurable():
 
 
 def test_untagged_not_started_is_an_info_note_not_high():
-    fs, checks = advisor.auth_findings([_ident("quietmoss.studio", "NOT_STARTED")], NoDns())
-    assert _dkim(fs) == {"quietmoss.studio": ("dkim_unsigned", "info")}
-    assert checks["quietmoss.studio"]["dkim"] == "SES not signing"
+    fs, checks = advisor.auth_findings([_ident("studio.example", "NOT_STARTED")], NoDns())
+    assert _dkim(fs) == {"studio.example": ("dkim_unsigned", "info")}
+    assert checks["studio.example"]["dkim"] == "SES not signing"
     (f,) = [f for f in fs if f["kind"] == "dkim_unsigned"]
     assert "fails DMARC alignment." not in f["detail"].split(";")[0]
 
@@ -55,7 +55,7 @@ def test_broken_ses_dkim_stays_high_even_for_app_projects():
 
 
 def test_unsigned_brief_verifies_before_enabling_easy_dkim():
-    md = fixbriefs.dkim_unsigned_brief("quietmoss.studio", "us-east-1")
+    md = fixbriefs.dkim_unsigned_brief("studio.example", "us-east-1")
     assert [line for line in md.splitlines() if line.startswith("## ")] == [f"## {s}" for s in fixbriefs.SECTIONS]
     steps = md.split("## Steps")[1].split("## Commands")[0]
     assert steps.index("DKIM-Signature") < steps.index("enable Easy DKIM")

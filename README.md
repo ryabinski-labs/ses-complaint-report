@@ -197,7 +197,7 @@ Copy `.env.example` to `.env` and edit:
 | `SESREPORT_LEDGER_TABLE` | Self-owned complaint ledger table (see infra/); blank = fall back to CloudWatch + app stores |
 | `SESREPORT_LEDGER_FUNCTION` | Ledger ingest Lambda name; an SNS topic with it subscribed counts as reaching the ledger (default `ses-complaint-report-ledger-ingest`) |
 | `SESREPORT_APP_DKIM_PROJECTS` | `Project` tag values whose identities are DKIM-signed by the app, not SES (default `WebMail`) |
-| `SESREPORT_APP_DKIM_MX` | MX hosts that mark a domain as app-signed when it predates tagging (default `inbound.wm.emcognito.com`) |
+| `SESREPORT_APP_DKIM_MX` | MX hosts that mark a domain as app-signed when it predates tagging, comma-separated (default: none, e.g. `inbound.mail.example.net`) |
 | `SESREPORT_TEST_IDENTITIES` | Identities that only send QA mail: their auth gaps are notes. Labels like `qa`, `test`, `staging`, `dev` (not the TLD) count automatically |
 | `SESREPORT_ENGAGEMENT_TRACKING` | `true` makes missing OPEN/CLICK publishing a finding; off by default because tracking rewrites links |
 | `SESREPORT_REDACT_EMAILS` | Mask recipient addresses in the API payload |

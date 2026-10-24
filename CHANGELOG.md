@@ -6,6 +6,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- `SESREPORT_APP_DKIM_MX` now defaults to empty. It used to default to one
+  operator's inbound MX host; set it in `.env` if your sending app signs DKIM.
+- Tests and docstrings use neutral example domains instead of real ones.
+- CI: every checkout sets `persist-credentials: false`; a tag-triggered release
+  workflow builds the sdist and wheel and attaches SLSA provenance
+  (`*.intoto.jsonl`); an OSS compliance workflow runs the readiness audits and
+  zizmor; issue templates added.
+
 ### Added
 
 - **VDM-equivalent deliverability, with VDM off** (spec `docs/prd/vdm-coverage.md`,
@@ -75,7 +85,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   no longer a finding; the identity "Sending" column read `no` for every
   identity (`GetEmailIdentity` has no such field). False negatives added: SES's
   own `Reputation.ComplaintRate`/`BounceRate` against the same lines as the
-  ledger rows (0.092% was above the 0.08% line with nothing shown); a DMARC
+  ledger rows (a rate above the 0.08% line showed nothing); a DMARC
   record with no valid `p=` (truncated at the first `;` by some DNS hosts), more
   than one record, `pct<100`, and inherited policies read through `sp=`, with
   the DMARCbis tree walk instead of a last-two-labels guess; a strict SPF check
@@ -102,8 +112,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Ledger ingest.** The sort key is `<eventType>#<messageId>`, so the
   config-set and identity copies of one event (timestamps a second apart)
   write one row, and the copy that knows the configuration set wins. Sender
-  display names are parsed (`"Name" <x@wm.emcognito.com>` was stored as
-  `wm.emcognito.com>`). The reader dedupes rows written by the old key.
+  display names are parsed (`"Name" <x@mail.example.net>` was stored as
+  `mail.example.net>`). The reader dedupes rows written by the old key.
 - **Fix briefs** no longer propose adding DELIVERY to an ops/alert topic or to
   an email-only identity topic; they create a dedicated ledger-subscribed
   destination instead, and routing briefs create an SNS destination (a

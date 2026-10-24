@@ -437,7 +437,7 @@ def dkim_unsigned_brief(identity: str, region: str = "") -> str:
         problem=f"SES's built-in DKIM is NOT_STARTED for `{identity_md}`, so SES adds no `d={identity_md}` signature.",
         resource=f"SES identity {identity_md}", region=region,
         why="This is only a problem if nothing else signs the mail. Apps that sign before SendRawEmail (for example "
-            "Folio/WebMail with its own selector) are correct to leave Easy DKIM off; enabling it would only add a "
+            "a webmail app with its own selector) are correct to leave Easy DKIM off; enabling it would only add a "
             "second set of DNS records.",
         steps=[f"Send a test message from `{identity_md}` and open its raw headers at the recipient.",
                f"If a `DKIM-Signature` with `d={identity_md}` is present and `Authentication-Results` shows "

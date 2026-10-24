@@ -254,7 +254,7 @@ def collect_config_set_metrics(errors: Errors, config_sets: list[dict]) -> dict:
 
     Every configuration set is queried by name. ``list_metrics`` only returns
     metrics with datapoints in the last 14 days, so enumerating from it hid
-    every complaint older than two weeks (8 on emcognito-transactional).
+    every complaint older than two weeks.
 
     ``Send``/``Complaint`` with the config-set dimension exist only for sets
     with a CloudWatch event destination; SES's own ``Reputation.*`` metrics
@@ -569,7 +569,7 @@ def collect_ledger_aggregates(errors: Errors, cache_dir: Path | None = None) -> 
 
 def _identity_domain(value: str) -> str:
     """The domain of a sending identity, tolerating a stored display-name form
-    (``"Name" <x@wm.emcognito.com>`` was once kept as ``wm.emcognito.com>``)."""
+    (``"Name" <x@mail.example.net>`` was once kept as ``mail.example.net>``)."""
     v = (value or "").strip().strip("<>").strip()
     if "@" in v:
         v = v.rsplit("@", 1)[1]
@@ -740,8 +740,8 @@ def _covering_identities(config_set: str, identity_feedback: list[dict], topics:
                          observed: set[str]) -> list[str]:
     """Identities whose own Bounce/Complaint topic reaches the ledger or a
     handler and that plausibly send through ``config_set``: those the ledger
-    has seen using it, plus a name match (``alaskaroadtrip-*`` ↔
-    ``alaskaroadtrip.com``). Empty unless *every* candidate is covered, since
+    has seen using it, plus a name match (``roadtrip-*`` ↔
+    ``roadtrip.example``). Empty unless *every* candidate is covered, since
     one uncovered sender makes the set's gap real again."""
     token = config_set.split("-")[0].lower()
     candidates = set(observed)

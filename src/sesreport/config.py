@@ -55,12 +55,12 @@ class Config:
     suppression_tables: list[str] = field(default_factory=list)
     ledger_table: str = ""
     # Identities tagged Project=<one of these> are DKIM-signed by the sending
-    # app before SES (Folio/WebMail signs in-app), so SES's own DKIM status
+    # app before SES (e.g. a webmail app that signs in-app), so SES's own DKIM status
     # is expected to be NOT_STARTED for them.
     app_dkim_projects: list[str] = field(default_factory=lambda: ["WebMail"])
     # Domains whose MX points at one of these hosts are served by an in-app
-    # signer too (Folio/WebMail inbound), for identities that predate tagging.
-    app_dkim_mx: list[str] = field(default_factory=lambda: ["inbound.wm.emcognito.com"])
+    # signer too (e.g. the app's inbound MX), for identities that predate tagging.
+    app_dkim_mx: list[str] = field(default_factory=list)
     # Identities that only send QA/test mail: auth gaps there are notes, not risks.
     test_identities: list[str] = field(default_factory=list)
     # Open/click tracking rewrites links; it is off by policy unless this is set,
@@ -92,7 +92,7 @@ def load() -> Config:
         suppression_tables=_split(os.environ.get("SESREPORT_SUPPRESSION_TABLES", "")),
         ledger_table=os.environ.get("SESREPORT_LEDGER_TABLE", ""),
         app_dkim_projects=_split(os.environ.get("SESREPORT_APP_DKIM_PROJECTS", "WebMail")),
-        app_dkim_mx=_split(os.environ.get("SESREPORT_APP_DKIM_MX", "inbound.wm.emcognito.com")),
+        app_dkim_mx=_split(os.environ.get("SESREPORT_APP_DKIM_MX", "")),
         test_identities=_split(os.environ.get("SESREPORT_TEST_IDENTITIES", "")),
         engagement_tracking=_bool("SESREPORT_ENGAGEMENT_TRACKING", False),
         ledger_function=os.environ.get("SESREPORT_LEDGER_FUNCTION", "ses-complaint-report-ledger-ingest"),
