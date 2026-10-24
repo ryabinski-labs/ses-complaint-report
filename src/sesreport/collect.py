@@ -1377,7 +1377,7 @@ def collect_all(cache_dir: Path | None = None, resolver=None) -> dict:
             "account": _account_id(),
             "region": REGION,
             "profile": PROFILE,
-            "collector_version": "1.1.0",
+            "collector_version": "1.1.1",
             "redacted": CFG.redact_emails,
         },
         "posture": posture,

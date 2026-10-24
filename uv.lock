@@ -638,7 +638,7 @@ wheels = [
 
 [[package]]
 name = "ses-complaint-report"
-version = "1.1.0"
+version = "1.1.1"
 source = { editable = "." }
 dependencies = [
     { name = "boto3" },
