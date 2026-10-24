@@ -113,7 +113,7 @@ def _dmarc_records(resolver, domain: str) -> tuple[list[str], str]:
 
     Walks up the parent labels (the DMARCbis tree walk) instead of guessing the
     organisational domain from the last two labels, which would turn a
-    subdomain of ``ollielabs.com.br`` into a lookup of ``_dmarc.com.br``.
+    subdomain of ``shop.com.br`` into a lookup of ``_dmarc.com.br``.
     """
     labels = domain.split(".")
     recs = _dmarc_at(resolver, domain)
@@ -179,7 +179,7 @@ def _looks_like_test(domain: str, test_identities: Iterable[str]) -> bool:
     d = domain.lower()
     if d in {t.lower() for t in test_identities}:
         return True
-    # the TLD never counts: steada.dev is a product, not a dev box
+    # the TLD never counts: product.dev is a product, not a dev box
     return any(label in TEST_LABELS or label.startswith("qa-") or label.endswith("-qa") for label in d.split(".")[:-1])
 
 
@@ -194,7 +194,7 @@ def auth_findings(identities: list[dict], resolver, region: str = "",
 
     SES's DKIM status only says whether *SES* signs. NOT_STARTED means SES's
     Easy DKIM was never set up, which is correct when the sending app signs the
-    message itself before SendRawEmail (Folio/WebMail does). Identities whose
+    message itself before SendRawEmail (a webmail app may). Identities whose
     Project tag is in ``app_signed``, or whose MX is one of ``app_dkim_mx``
     (identities that predate tagging), count as signed by the app; other
     NOT_STARTED identities get an info note, not a high "fails DMARC" finding.

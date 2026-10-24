@@ -4,6 +4,9 @@ updates:
     directory: "/"
     schedule:
       interval: weekly
+    # wait a week so a compromised release can be caught first; security updates are immediate
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 5
     groups:
       python-minor:
@@ -13,3 +16,6 @@ updates:
     directory: "/"
     schedule:
       interval: weekly
+    # wait a week so a compromised release can be caught first; security updates are immediate
+    cooldown:
+      default-days: 7

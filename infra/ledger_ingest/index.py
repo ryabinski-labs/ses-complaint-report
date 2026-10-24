@@ -115,7 +115,7 @@ def _event_kind(event: dict) -> str:
 
 def _sending_identity(event: dict) -> str:
     """Domain of ``mail.source``, which may be a display-name form
-    (``"Name" <x@wm.emcognito.com>``): parse it, do not split on '@'."""
+    (``"Name" <x@mail.example.net>``): parse it, do not split on '@'."""
     source = ((event.get("mail") or {}).get("source")) or ""
     addr = parseaddr(source)[1] or source
     return addr.rsplit("@", 1)[-1].strip("<>").lower() if "@" in addr else ""
