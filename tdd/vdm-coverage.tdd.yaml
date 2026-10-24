@@ -34,9 +34,9 @@ requirements:
         given: an SES Delivery notification on 2026-10-24 to 3 gmail.com recipients from no-reply@example.com through config set transactional
         when: counters_for_event is called
         then: one update targets pk AGG#2026-10-24, sk gmail.com#example.com#transactional#DELIVERY with n=3
-        oracle: 'updates == [{"pk":"AGG#2026-10-24","sk":"gmail.com#example.com#transactional#DELIVERY","n":3}]'
+        oracle: '[{pk,sk,n} of u for u in updates] == [{"pk":"AGG#2026-10-24","sk":"gmail.com#example.com#transactional#DELIVERY","n":3}] (ttl checked by SC-001-e)'
         doubles: none — pure function
-        status: red
+        status: green
       - id: SC-001-b
         test_ref: "tests/test_vdm_coverage_tdd.py::SC-001-b"
         level: unit
@@ -47,7 +47,7 @@ requirements:
         oracle: 'not any("@" in str(v) or "alice" in str(v) or "bob" in str(v) for u in updates for v in u.values())'
         doubles: none
         negative: true
-        status: red
+        status: green
       - id: SC-001-c
         test_ref: "tests/test_vdm_coverage_tdd.py::SC-001-c"
         level: unit
@@ -57,7 +57,7 @@ requirements:
         then: the sort key's config-set segment is "(none)"
         oracle: 'updates[0]["sk"].split("#")[2] == "(none)"'
         doubles: none
-        status: red
+        status: green
       - id: SC-001-d
         test_ref: "tests/test_vdm_coverage_tdd.py::SC-001-d"
         level: integration
@@ -68,7 +68,7 @@ requirements:
         oracle: 'fake.counter("AGG#2026-10-24", sk)["n"] == 3 AND fake.count(pk="SEEN#M") == 1'
         doubles: DynamoDB replaced by in-memory fake (tests/test_ledger_ingest.py pattern); no AWS
         negative: true
-        status: red
+        status: green
       - id: SC-001-e
         test_ref: "tests/test_vdm_coverage_tdd.py::SC-001-e"
         level: unit
@@ -78,7 +78,7 @@ requirements:
         then: counter ttl is NOW+396 days and marker ttl is NOW+30 days
         oracle: 'u["ttl"] == epoch(NOW)+396*86400 AND marker["ttl"] == epoch(NOW)+30*86400'
         doubles: none
-        status: red
+        status: green
   - id: REQ-002
     text: Recipient domains map to mailbox providers by a static domain map, then by MX record, else Other.
     priority: P0
@@ -94,7 +94,7 @@ requirements:
         then: every result is "Microsoft" and the MX lookup was not called
         oracle: 'all(classify(d, mx=raiser) == "Microsoft" for d in doms)'
         doubles: MX lookup replaced by a function that raises
-        status: red
+        status: green
       - id: SC-002-b
         test_ref: "tests/test_vdm_coverage_tdd.py::SC-002-b"
         level: unit
@@ -104,7 +104,7 @@ requirements:
         then: acme.example is Microsoft and beta.example is Google
         oracle: 'classify("acme.example", mx=stub) == "Microsoft" AND classify("beta.example", mx=stub) == "Google"'
         doubles: stub MX resolver returning fixed records
-        status: red
+        status: green
       - id: SC-002-c
         test_ref: "tests/test_vdm_coverage_tdd.py::SC-002-c"
         level: unit
@@ -115,7 +115,7 @@ requirements:
         oracle: 'classify("t.example", mx=timeout) == "Other" AND classify("u.example", mx=stub) == "Other"'
         doubles: stub resolver raising a timeout
         negative: true
-        status: red
+        status: green
       - id: SC-002-d
         test_ref: "tests/test_vdm_coverage_tdd.py::SC-002-d"
         level: integration
@@ -125,7 +125,7 @@ requirements:
         then: the resolver is called once for the first two runs and again on day 8
         oracle: 'resolver.calls == 2 AND (tmp/"providers-mx-cache.json").exists()'
         doubles: stub resolver; real filesystem (tmp_path); injected clock
-        status: red
+        status: green
   - id: REQ-003
     text: The Mailbox providers table shows deliveries, complaints, complaint rate, permanent bounces and bounce rate per provider for the selected Range, sorted by deliveries, with rates only at or above 1,000 deliveries.
     priority: P0
@@ -142,7 +142,7 @@ requirements:
         oracle: 'row.complaint_rate == 0.0008 AND row.bounce_rate == 0.015'
         doubles: none
         data: {deliveries: 20000, complaints: 16, bounces: 300}
-        status: red
+        status: green
       - id: SC-003-b
         test_ref: "tests/test_vdm_coverage_tdd.py::SC-003-b"
         level: unit
@@ -152,7 +152,7 @@ requirements:
         then: the 999 row has rates None with reason "too few deliveries"; the 1,000 row has complaint_rate 0.001
         oracle: 'r999.complaint_rate is None AND r999.rate_note == "too few deliveries" AND r1000.complaint_rate == 0.001'
         doubles: none
-        status: red
+        status: green
       - id: SC-003-c
         test_ref: "tests/test_vdm_coverage_tdd.py::SC-003-c"
         level: unit
@@ -162,7 +162,7 @@ requirements:
         then: provider order is Google, Yahoo, Microsoft
         oracle: '[r.name for r in providers] == ["Google","Yahoo","Microsoft"]'
         doubles: none
-        status: red
+        status: green
       - id: SC-003-d
         test_ref: "tests/test_vdm_coverage_tdd.py::SC-003-d"
         level: unit
@@ -172,7 +172,7 @@ requirements:
         then: Google deliveries is 1,500
         oracle: 'providers["Google"].deliveries == 1500'
         doubles: none
-        status: red
+        status: green
       - id: SC-003-e
         test_ref: "tests/ui/vdm-coverage.tdd.spec.mjs::SC-003-e"
         level: acceptance
@@ -182,7 +182,7 @@ requirements:
         then: a Mailbox providers section lists providers with the five columns, at least one row reads "too few deliveries", and the numbers change with the Range
         oracle: 'locator("#providers tbody tr").count() >= 3 AND text("#providers") contains "too few deliveries" AND deliveries(All) != deliveries(30d)'
         doubles: none — real app in demo mode (tests/ui webServer)
-        status: red
+        status: green
   - id: REQ-004
     text: Per-identity and per-config-set tables use the same five columns and the same 1,000-delivery floor.
     priority: P0
@@ -198,7 +198,7 @@ requirements:
         then: both groupings expose deliveries, complaints, complaint_rate, bounces, bounce_rate; the 400 rows have rates None
         oracle: 'set(identities[0]) >= COLS AND identities["news.example.com"].complaint_rate is None AND config_sets["(none)"].complaint_rate is None'
         doubles: none
-        status: red
+        status: green
   - id: REQ-005
     text: The Advisor raises a high finding with a fix brief for each identity whose DKIM status is not SUCCESS.
     priority: P0
@@ -214,7 +214,7 @@ requirements:
         then: exactly one finding, severity high, resource b.example, kind dkim, with a non-empty brief
         oracle: 'len(fs) == 1 AND fs[0].severity == "high" AND fs[0].resource == "b.example" AND fs[0].brief'
         doubles: DNS resolver stub returning passing SPF/DMARC so only DKIM varies
-        status: red
+        status: green
   - id: REQ-006
     text: The Advisor raises a medium finding for a sending domain without a custom MAIL FROM or whose MAIL FROM SPF TXT lacks include:amazonses.com.
     priority: P0
@@ -230,7 +230,7 @@ requirements:
         then: one medium finding of kind mail_from names c.example
         oracle: 'any(f.kind=="mail_from" and f.severity=="medium" and f.resource=="c.example" for f in fs)'
         doubles: DNS stub
-        status: red
+        status: green
       - id: SC-006-b
         test_ref: "tests/test_vdm_coverage_tdd.py::SC-006-b"
         level: unit
@@ -240,7 +240,7 @@ requirements:
         then: one medium finding of kind spf names bounce.d.example
         oracle: 'any(f.kind=="spf" and f.severity=="medium" and f.resource=="bounce.d.example" for f in fs)'
         doubles: DNS stub
-        status: red
+        status: green
   - id: REQ-007
     text: The Advisor checks DMARC per sending domain - missing record high, p=none medium, missing rua info.
     priority: P0
@@ -256,7 +256,7 @@ requirements:
         then: severities are high, medium, info, and no finding respectively
         oracle: '[sev(d) for d in doms] == ["high","medium","info",None]'
         doubles: DNS stub
-        status: red
+        status: green
   - id: REQ-008
     text: A DNS lookup that times out after 2 seconds marks the check "not checked - DNS timeout" and produces no finding.
     priority: P0
@@ -273,7 +273,7 @@ requirements:
         oracle: 'not [f for f in fs if f.resource.endswith("e.example")] AND checks["e.example"]["dmarc"] == "not checked: DNS timeout"'
         doubles: DNS stub raising timeout
         negative: true
-        status: red
+        status: green
       - id: SC-008-b
         test_ref: "tests/test_vdm_coverage_tdd.py::SC-008-b"
         level: unit
@@ -283,7 +283,7 @@ requirements:
         then: its lifetime is 2.0 seconds
         oracle: 'make_resolver().lifetime == 2.0'
         doubles: none
-        status: red
+        status: green
   - id: REQ-009
     text: Threshold findings flag rows with at least 1,000 deliveries at complaint 0.08% medium, 0.10% high and bounce 5% medium, 10% high.
     priority: P0
@@ -299,7 +299,7 @@ requirements:
         then: severities are none, medium, high
         oracle: '[sev(r) for r in rows] == [None,"medium","high"]'
         doubles: none
-        status: red
+        status: green
       - id: SC-009-b
         test_ref: "tests/test_vdm_coverage_tdd.py::SC-009-b"
         level: unit
@@ -309,7 +309,7 @@ requirements:
         then: severities are none, medium, high
         oracle: '[sev(r) for r in rows] == [None,"medium","high"]'
         doubles: none
-        status: red
+        status: green
       - id: SC-009-c
         test_ref: "tests/test_vdm_coverage_tdd.py::SC-009-c"
         level: unit
@@ -320,7 +320,7 @@ requirements:
         oracle: 'threshold_findings([row]) == []'
         doubles: none
         negative: true
-        status: red
+        status: green
   - id: REQ-010
     text: Every Fix button copies a Markdown brief with Problem, Affected resource, Why it matters, Steps, Commands, Verify and Rollback, with shell-quoted commands; routing fixes embed the create-configuration-set-event-destination command.
     priority: P0
@@ -336,7 +336,7 @@ requirements:
         then: the Markdown contains the headings Problem, Affected resource, Why it matters, Steps, Commands, Verify, Rollback in that order
         oracle: 'headings(md) == ["Problem","Affected resource","Why it matters","Steps","Commands","Verify","Rollback"]'
         doubles: none
-        status: red
+        status: green
       - id: SC-010-b
         test_ref: "tests/test_vdm_coverage_tdd.py::SC-010-b"
         level: unit
@@ -346,7 +346,7 @@ requirements:
         then: the argument after --configuration-set-name equals the generated name
         oracle: 'for all names - shlex.split(cmd)[i+1] == name where i is the index of "--configuration-set-name"'
         doubles: none
-        status: red
+        status: green
       - id: SC-010-c
         test_ref: "tests/test_vdm_coverage_tdd.py::SC-010-c"
         level: unit
@@ -356,7 +356,7 @@ requirements:
         then: the Commands block contains "aws sesv2 create-configuration-set-event-destination" and MatchingEventTypes BOUNCE and COMPLAINT
         oracle: '"create-configuration-set-event-destination" in cmd AND json.loads(dest)["MatchingEventTypes"] >= ["BOUNCE","COMPLAINT"]'
         doubles: none
-        status: red
+        status: green
       - id: SC-010-d
         test_ref: "tests/ui/vdm-coverage.tdd.spec.mjs::SC-010-d"
         level: acceptance
@@ -366,7 +366,7 @@ requirements:
         then: the clipboard starts with a Markdown heading, contains "## Commands" and the resource name, and the toast names the resource
         oracle: 'clip.startsWith("# ") AND clip.includes("## Commands") AND clip.includes(resource) AND toast.includes(resource)'
         doubles: none — real app in demo mode
-        status: red
+        status: green
   - id: REQ-011
     text: Open rate and click rate per provider are messages opened or clicked at least once divided by deliveries, labelled as inflated by Apple Mail Privacy Protection.
     priority: P0
@@ -383,7 +383,7 @@ requirements:
         oracle: 'fake.counter(day, "yahoo.com#example.com#transactional#OPEN_UNIQUE")["n"] == 1'
         doubles: in-memory DynamoDB fake
         negative: true
-        status: red
+        status: green
       - id: SC-011-b
         test_ref: "tests/test_vdm_coverage_tdd.py::SC-011-b"
         level: unit
@@ -393,7 +393,7 @@ requirements:
         then: open_rate is 0.25 and click_rate is 0.02
         oracle: 'row.open_rate == 0.25 AND row.click_rate == 0.02'
         doubles: none
-        status: red
+        status: green
       - id: SC-011-c
         test_ref: "tests/ui/vdm-coverage.tdd.spec.mjs::SC-011-c"
         level: acceptance
@@ -403,7 +403,7 @@ requirements:
         then: open rate and click rate columns appear with the text "opens inflated by Apple Mail Privacy Protection"
         oracle: 'text("#providers") contains "Open rate" AND "Click rate" AND "opens inflated by Apple Mail Privacy Protection"'
         doubles: none — demo mode
-        status: red
+        status: green
   - id: REQ-012
     text: Config sets and identity topics that do not publish Delivery, Open or Click events produce findings with fix briefs.
     priority: P0
@@ -419,7 +419,7 @@ requirements:
         then: one finding names transactional and lists DELIVERY, OPEN, CLICK as missing, with a brief that adds them to the existing destination
         oracle: 'f.resource == "transactional" AND set(f.missing) == {"DELIVERY","OPEN","CLICK"} AND "update-configuration-set-event-destination" in f.brief'
         doubles: none
-        status: red
+        status: green
       - id: SC-012-b
         test_ref: "tests/test_vdm_coverage_tdd.py::SC-012-b"
         level: unit
@@ -429,7 +429,7 @@ requirements:
         then: one info finding whose brief contains "set-identity-notification-topic" and "--notification-type Delivery"
         oracle: 'f.severity == "info" AND "--notification-type Delivery" in f.brief'
         doubles: none
-        status: red
+        status: green
   - id: REQ-013
     text: The section explains missing data - ledger not configured, no delivery data yet, ledger read failure - and the rest of the report still renders.
     priority: P0
@@ -445,7 +445,7 @@ requirements:
         then: state is "ledger_not_configured" and all tables are empty
         oracle: 'b.state == "ledger_not_configured" AND b.providers == []'
         doubles: none
-        status: red
+        status: green
       - id: SC-013-b
         test_ref: "tests/test_vdm_coverage_tdd.py::SC-013-b"
         level: unit
@@ -455,7 +455,7 @@ requirements:
         then: state is "no_delivery_data", complaint counts are shown and every rate is None
         oracle: 'b.state == "no_delivery_data" AND sum(r.complaints for r in b.providers) == 5 AND all(r.complaint_rate is None for r in b.providers)'
         doubles: none
-        status: red
+        status: green
       - id: SC-013-c
         test_ref: "tests/test_vdm_coverage_tdd.py::SC-013-c"
         level: integration
@@ -466,7 +466,7 @@ requirements:
         oracle: '"ledger_aggregates" in [e["section"] for e in model["errors"]] AND model["metrics"] AND model["posture"]'
         doubles: boto3 clients replaced by fakes (no AWS)
         negative: true
-        status: red
+        status: green
       - id: SC-013-d
         test_ref: "tests/ui/vdm-coverage.tdd.spec.mjs::SC-013-d"
         level: acceptance
@@ -476,7 +476,7 @@ requirements:
         then: the Mailbox providers section reads "no delivery data yet" and offers a Fix button
         oracle: 'text("#providers") contains "no delivery data yet" AND locator("#providers [data-fix]").count() >= 1'
         doubles: page.route override of /api/report
-        status: red
+        status: green
   - id: REQ-014
     text: Demo mode shows synthetic provider, identity, config-set and Advisor data.
     priority: P2
@@ -492,7 +492,7 @@ requirements:
         then: breakdowns.providers has at least 3 rows and advisor findings number at least 3
         oracle: 'len(m["breakdowns"]["providers"]) >= 3 AND len(m["advisor"]["findings"]) >= 3'
         doubles: none
-        status: red
+        status: green
   - id: REQ-015
     text: The dashboard stays read-only and never calls VDM APIs.
     priority: P0
@@ -509,7 +509,7 @@ requirements:
         oracle: 'not any(op in FORBIDDEN or re.match(r"(Put|Create|Update|Delete|Set)", op) for op in recorder.ops)'
         doubles: recording fake boto3 clients
         negative: true
-        status: red
+        status: green
   - id: REQ-016
     text: Refresh cost stays bounded - at most 120 DNS lookups per refresh with a 7-day cache, and at most 2 ledger aggregate partitions re-read per warm refresh.
     priority: P1
@@ -525,7 +525,7 @@ requirements:
         then: at most 120 MX lookups are made and the remainder are classified Other until the next refresh
         oracle: 'resolver.calls <= 120'
         doubles: counting stub resolver
-        status: red
+        status: green
       - id: SC-016-b
         test_ref: "tests/test_vdm_coverage_tdd.py::SC-016-b"
         level: integration
@@ -535,4 +535,4 @@ requirements:
         then: Query is called for at most 2 AGG# partitions
         oracle: 'len({q["pk"] for q in fake.queries}) <= 2'
         doubles: counting DynamoDB fake; tmp_path data dir
-        status: red
+        status: green

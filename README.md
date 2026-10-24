@@ -57,7 +57,7 @@ SESREPORT_DEMO=1 uv run sesreport
 
 - **Enforcement & suppression posture** — enforcement status, production access,
   account suppression and its live entry counts, VDM, send quota, dedicated-IP
-  warm-up (`sesv2:GetAccount`).
+  warm-up (`ses:GetAccount`).
 - **Complaint volume** — complaint / send / bounce counts and the rolling
   `Reputation.ComplaintRate` vs the AWS 0.10% review line and an internal alert line.
 - **Complaints by configuration set** — from the `ses:configuration-set` metric dimension.
@@ -75,7 +75,17 @@ SESREPORT_DEMO=1 uv run sesreport
   the non-expiring SES suppression list, and the adaptive reputation window, with
   per-complaint expiry dates.
 - **Suppression coverage** — every configuration set flagged as routing or **not**
-  routing `BOUNCE`/`COMPLAINT`, risk-ranked, with a copy-paste AWS CLI fix.
+  routing `BOUNCE`/`COMPLAINT`, risk-ranked, with a Markdown fix brief.
+- **Mailbox providers (VDM-equivalent, VDM off)** — complaint, bounce, open and
+  click rates per mailbox provider (Google, Microsoft, Yahoo, Apple… classified by
+  recipient domain and MX), per sending identity and per configuration set, from
+  the self-owned ledger. A rate appears once a row has 1,000 deliveries in the
+  selected range. VDM itself stays off and costs nothing.
+- **Advisor** — DKIM per identity, custom MAIL FROM and its SPF, DMARC presence and
+  policy, complaint (0.08%/0.10%) and bounce (5%/10%) thresholds, and gaps in
+  Delivery/Open/Click publishing. Every finding has a **Fix** button that copies an
+  agent-ready Markdown brief (problem, steps, shell-quoted commands, verify,
+  rollback) for you or a coding agent to apply.
 - **Change tracking** — each refresh is snapshotted, so the report shows deltas
   (new complaints, rate movement, new complainant addresses) and a rate sparkline.
 
@@ -110,6 +120,21 @@ The topic names are passed on the command line (they are your account's, so they
 stay out of the repo). Leave them off to deploy the table + Lambda first and wire
 subscriptions later.
 
+The Lambda also counts **Delivery, Open and Click** events into daily counter
+items (recipient domain × sending identity × config set, no addresses; a 30-day
+marker per SES message ID dedupes SNS redeliveries and repeat opens). Those
+counters are the denominators for the Mailbox providers rates. To feed them,
+publish the extra event types to the ledger's topics. The dashboard's Advisor
+lists every config set and identity that does not, with a copyable fix brief:
+
+- config sets: add `DELIVERY`, `OPEN` and `CLICK` to the SNS event destination
+  (OPEN/CLICK make SES add a tracking pixel and rewrite links);
+- identities used without a config set: `aws ses set-identity-notification-topic
+  --notification-type Delivery`.
+
+Redeploy the stack after upgrading so the Lambda has the counting code. At
+~50,000 deliveries a month the added SNS/Lambda/DynamoDB cost is a few cents.
+
 The report stays **read-only** — it reads the table; the Lambda is the only
 writer. With the ledger configured, its recipient records become the primary
 source of truth for attribution and survive past CloudWatch's window.
@@ -132,21 +157,27 @@ ledger in `infra/` is a separate, opt-in writer; the report only reads it.)
 
 ### IAM permissions
 
-Read-only:
+Read-only. SES v1 and v2 API operations share the IAM service prefix `ses:`
+(there is no `sesv2:` prefix):
 
 ```
 sts:GetCallerIdentity
-sesv2:GetAccount
-sesv2:ListEmailIdentities, sesv2:GetEmailIdentity
-sesv2:ListConfigurationSets
-sesv2:ListSuppressedDestinations
-ses:DescribeConfigurationSet
+ses:GetAccount
+ses:ListEmailIdentities, ses:GetEmailIdentity
+ses:ListConfigurationSets, ses:DescribeConfigurationSet
+ses:ListSuppressedDestinations
+ses:GetIdentityNotificationAttributes
 cloudwatch:GetMetricStatistics, cloudwatch:ListMetrics
 logs:DescribeLogGroups, logs:StartQuery, logs:GetQueryResults
 sns:ListTopics, sns:ListSubscriptionsByTopic
 sqs:GetQueueUrl, sqs:GetQueueAttributes
-dynamodb:Scan            # only on the app tables named in .env
+dynamodb:Scan            # the app tables named in .env, and the ledger table + its by_day index
+dynamodb:Query           # the ledger table (daily delivery/open/click counters)
 ```
+
+The Advisor also makes public DNS lookups (MX, TXT for SPF and DMARC) with a
+2-second timeout, at most 120 per refresh, cached for 7 days. VDM APIs
+(`BatchGetMetricData`, `ListRecommendations`) are never called.
 
 ## Configure
 

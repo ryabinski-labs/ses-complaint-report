@@ -11,16 +11,21 @@ from __future__ import annotations
 
 import datetime as dt
 import hashlib
+import json
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from pathlib import Path
 
 import boto3
-from boto3.dynamodb.conditions import Attr
+from boto3.dynamodb.conditions import Attr, Key
 from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError
 
+from . import advisor as _advisor
+from . import breakdowns as _breakdowns
 from .config import load as _load_config
+from .providers import Classifier
 
 log = logging.getLogger("sesreport.collect")
 
@@ -404,6 +409,94 @@ def collect_app_stores(errors: Errors) -> dict:
     return {"counts": counts, "records": records}
 
 
+LEDGER_COUNTER_PREFIXES = ("AGG#", "SEEN#")
+
+
+def _scan_ledger_rows(table) -> list[dict]:
+    """Complaint and bounce rows only. Counter and dedupe items carry no
+    ``day`` attribute, so the sparse ``by_day`` index excludes them; a table
+    scan with a key filter is the fallback when the index is not readable."""
+    try:
+        items, lek = [], None
+        while True:
+            kw = {"IndexName": "by_day"}
+            if lek:
+                kw["ExclusiveStartKey"] = lek
+            out = table.scan(**kw)
+            items.extend(out.get("Items", []))
+            lek = out.get("LastEvaluatedKey")
+            if not lek:
+                return items
+    except ClientError as e:
+        if e.response.get("Error", {}).get("Code") not in ("ValidationException", "AccessDeniedException",
+                                                             "ResourceNotFoundException"):
+            raise
+    return [it for it in _scan_all(table)
+            if not str(it.get("recipient_hash", "")).startswith(LEDGER_COUNTER_PREFIXES)]
+
+
+def _query_partition(table, pk: str) -> list[dict]:
+    items, lek = [], None
+    while True:
+        kw = {"KeyConditionExpression": Key("recipient_hash").eq(pk)}
+        if lek:
+            kw["ExclusiveStartKey"] = lek
+        out = table.query(**kw)
+        items.extend(out.get("Items", []))
+        lek = out.get("LastEvaluatedKey")
+        if not lek:
+            return items
+
+
+def read_ledger_aggregates(table, cache_path: Path | None, today: dt.date, days: int = 396,
+                           refresh_days: int = 2, workers: int = 8) -> list[dict]:
+    """Daily Delivery/Open/Click counters as ``{day, domain, identity, config_set, event, n}``.
+
+    Past days never change once written, so they are cached in ``cache_path``;
+    a warm refresh re-reads only the last ``refresh_days`` partitions."""
+    cache: dict[str, list] = {}
+    if cache_path and cache_path.exists():
+        try:
+            cache = json.loads(cache_path.read_text()).get("days", {})
+        except (ValueError, OSError):
+            cache = {}
+    wanted = [(today - dt.timedelta(days=i)).isoformat() for i in range(days)]
+    recent = set(wanted[:refresh_days])
+    todo = [d for d in wanted if d in recent or d not in cache]
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        for day, items in zip(todo, ex.map(lambda d: _query_partition(table, f"AGG#{d}"), todo), strict=True):
+            rows = []
+            for it in items:
+                parts = str(it.get("sk", "")).rsplit("#", 3)
+                if len(parts) != 4:
+                    continue
+                domain, identity, config_set, event = parts
+                rows.append({"domain": domain, "identity": identity, "config_set": config_set,
+                             "event": event, "n": int(it.get("n", 0))})
+            cache[day] = rows
+    cache = {d: v for d, v in cache.items() if d in set(wanted)}
+    if cache_path:
+        try:
+            cache_path.parent.mkdir(parents=True, exist_ok=True)
+            cache_path.write_text(json.dumps({"days": cache}, sort_keys=True))
+        except OSError:
+            pass
+    return [{"day": d, **r} for d, rows in sorted(cache.items()) for r in rows]
+
+
+def collect_ledger_aggregates(errors: Errors, cache_dir: Path | None = None) -> list[dict]:
+    if not CFG.ledger_table:
+        return []
+    res = boto3.Session(profile_name=PROFILE or None).resource("dynamodb", region_name=REGION)
+    try:
+        return read_ledger_aggregates(res.Table(CFG.ledger_table),
+                                      (cache_dir / "ledger-aggregates.json") if cache_dir else None,
+                                      dt.datetime.now(dt.timezone.utc).date())
+    except (ClientError, BotoCoreError) as e:
+        errors.add("ledger_aggregates", e)
+        return []
+
+
 def collect_ledger(errors: Errors) -> dict:
     """Read the self-owned feedback ledger, if one is configured.
 
@@ -417,7 +510,7 @@ def collect_ledger(errors: Errors) -> dict:
     empty = {"configured": True, "table": CFG.ledger_table, "records": [], "oldest": None, "newest": None}
     res = boto3.Session(profile_name=PROFILE or None).resource("dynamodb", region_name=REGION)
     try:
-        items = _scan_all(res.Table(CFG.ledger_table))
+        items = _scan_ledger_rows(res.Table(CFG.ledger_table))
     except (ClientError, BotoCoreError) as e:
         errors.add("ledger", e)
         return {**empty, "error": True}
@@ -437,6 +530,8 @@ def collect_ledger(errors: Errors) -> dict:
                 "event_type": it.get("event_type", ""),
                 "sending_identity": it.get("sending_identity", ""),
                 "config_set": it.get("config_set", ""),
+                "recipient_domain": it.get("recipient_domain", ""),
+                "day": it.get("day", ""),
                 # The stored key is the SHA-256 of the real address; the report
                 # keeps it so the ledger row can be matched against a full-address
                 # application-store row (see ``_identity_hash``).
@@ -689,7 +784,8 @@ def collect_config_sets(errors: Errors) -> list[dict]:
         destinations: list[dict] = []
         for d in dests:
             types.extend(t.upper() for t in d.get("MatchingEventTypes", []))
-            entry = {"name": d.get("Name"), "enabled": d.get("Enabled", True)}
+            entry = {"name": d.get("Name"), "enabled": d.get("Enabled", True),
+                     "event_types": sorted(t.upper() for t in d.get("MatchingEventTypes", []))}
             if "SNSDestination" in d:
                 entry["sns"] = d["SNSDestination"].get("TopicARN")
             if "CloudWatchDestination" in d:
@@ -734,6 +830,8 @@ def collect_identities(errors: Errors) -> dict:
             "dkim_status": d.get("DkimAttributes", {}).get("Status", ""),
             "verified": bool(d.get("VerifiedForSendingStatus")),
             "sending": bool(d.get("SendingEnabled")),
+            "mail_from_domain": (d.get("MailFromAttributes") or {}).get("MailFromDomain", ""),
+            "mail_from_status": (d.get("MailFromAttributes") or {}).get("MailFromDomainStatus", ""),
         }
 
     rows = []
@@ -801,12 +899,14 @@ def collect_identity_feedback(errors: Errors) -> list[dict]:
         for ident, attrs in r.get("NotificationAttributes", {}).items():
             bounce = attrs.get("BounceTopic")
             complaint = attrs.get("ComplaintTopic")
-            if bounce or complaint:
+            delivery = attrs.get("DeliveryTopic")
+            if bounce or complaint or delivery:
                 out.append(
                     {
                         "identity": ident,
                         "bounce_topic": bounce,
                         "complaint_topic": complaint,
+                        "delivery_topic": delivery,
                         "forwarding_enabled": bool(attrs.get("ForwardingEnabled")),
                     }
                 )
@@ -846,7 +946,7 @@ def collect_sqs(errors: Errors) -> dict | None:
 # --------------------------------------------------------------------------- #
 # Orchestration
 # --------------------------------------------------------------------------- #
-def collect_all() -> dict:
+def collect_all(cache_dir: Path | None = None, resolver=None) -> dict:
     started = dt.datetime.now(dt.timezone.utc)
     errors = Errors()
 
@@ -892,6 +992,8 @@ def collect_all() -> dict:
         suppression_list = f_supplist.result()
         cs_sends = f_cssends.result()
         ledger = f_ledger.result()
+        f_aggs = ex.submit(guard, "ledger_aggregates", lambda e: collect_ledger_aggregates(e, cache_dir), [])
+        aggregates = f_aggs.result()
 
     suppression = app_stores.get("counts", [])
     suppression_records = app_stores.get("records", [])
@@ -995,6 +1097,12 @@ def collect_all() -> dict:
         }
     )
 
+    deliverability = build_deliverability(
+        ledger=ledger, aggregates=aggregates, identities=identities, coverage=suppression_coverage,
+        config_sets=config_sets, identity_feedback=identity_feedback, errors=errors,
+        cache_dir=cache_dir, resolver=resolver,
+    )
+
     model = {
         "meta": {
             "generated_at": started.isoformat(),
@@ -1022,10 +1130,38 @@ def collect_all() -> dict:
         "suppression_list": suppression_list,
         "suppression_coverage": suppression_coverage,
         "retention": retention,
+        "breakdowns": deliverability["breakdowns"],
+        "advisor": deliverability["advisor"],
         "errors": errors.items,
         "collect_ms": int((dt.datetime.now(dt.timezone.utc) - started).total_seconds() * 1000),
     }
     return model
+
+
+def build_deliverability(*, ledger, aggregates, identities, coverage, config_sets, identity_feedback,
+                         errors: Errors, cache_dir: Path | None = None, resolver=None, today=None) -> dict:
+    """VDM-equivalent breakdowns and Advisor findings (VDM itself stays off)."""
+    today = today or dt.datetime.now(dt.timezone.utc).date()
+    if resolver is None:
+        try:
+            resolver = _advisor.make_resolver()
+        except Exception as e:  # noqa: BLE001 - DNS library or config missing
+            errors.add("advisor_dns", e)
+            resolver = None
+    # authentication checks get first call on the shared DNS budget
+    auth = _advisor.auth_findings((identities or {}).get("rows", []), resolver, REGION) if resolver else ([], {})
+    classifier = Classifier((cache_dir / "providers-mx-cache.json") if cache_dir else None,
+                            getattr(resolver, "mx", None))
+    breakdowns = _breakdowns.build_all_ranges(aggregates, ledger.get("records", []), today,
+                                              classify=classifier, configured=bool(ledger.get("configured")))
+    classifier.save()
+    breakdowns["classification"] = classifier.stats
+    advisor = _advisor.run(identities=(identities or {}).get("rows", []), coverage=coverage,
+                           config_sets=config_sets, identity_feedback=identity_feedback,
+                           window=breakdowns["ranges"]["30"], resolver=resolver, region=REGION, auth=auth)
+    log.info("deliverability: %d counters, classification %s, %d findings, dns %s",
+             len(aggregates), classifier.stats, len(advisor["findings"]), advisor["dns"])
+    return {"breakdowns": breakdowns, "advisor": advisor}
 
 
 if __name__ == "__main__":

@@ -9,10 +9,10 @@
 
 | Level | Scenarios | red | green | blocked | obsolete |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| unit | 30 | 30 | 0 | 0 | 0 |
-| integration | 7 | 7 | 0 | 0 | 0 |
-| acceptance | 4 | 4 | 0 | 0 | 0 |
-| **total** | **41** | 41 | 0 | 0 | 0 |
+| unit | 30 | 0 | 30 | 0 | 0 |
+| integration | 7 | 0 | 7 | 0 | 0 |
+| acceptance | 4 | 0 | 4 | 0 | 0 |
+| **total** | **41** | 0 | 41 | 0 | 0 |
 
 ## Non-goals
 
@@ -29,7 +29,7 @@
 
 **Priority:** P0 · **Type:** functional · **PRD:** §5 story 1; §12 Ledger counter items; A-001
 
-#### SC-001-a — Delivery to 3 gmail recipients yields one counter update of 3  `unit` `red`
+#### SC-001-a — Delivery to 3 gmail recipients yields one counter update of 3  `unit` `green`
 
 - **Given** an SES Delivery notification on 2026-10-24 to 3 gmail.com recipients from no-reply@example.com through config set transactional
 - **When** counters_for_event is called
@@ -38,7 +38,7 @@
 - **Test doubles:** none — pure function
 - **Test:** `tests/test_vdm_coverage_tdd.py::SC-001-a`
 
-#### SC-001-b — Counter updates never contain a recipient address  `unit` `red`
+#### SC-001-b — Counter updates never contain a recipient address  `unit` `green`
 
 - **Given** a Delivery notification to alice@gmail.com and bob@yahoo.com
 - **When** counters_for_event is called
@@ -47,7 +47,7 @@
 - **Test doubles:** none
 - **Test:** `tests/test_vdm_coverage_tdd.py::SC-001-b`
 
-#### SC-001-c — Untagged delivery is keyed to config set (none)  `unit` `red`
+#### SC-001-c — Untagged delivery is keyed to config set (none)  `unit` `green`
 
 - **Given** a Delivery notification with no ses:configuration-set tag
 - **When** counters_for_event is called
@@ -56,7 +56,7 @@
 - **Test doubles:** none
 - **Test:** `tests/test_vdm_coverage_tdd.py::SC-001-c`
 
-#### SC-001-d — A redelivered SNS message is counted once  `integration` `red`
+#### SC-001-d — A redelivered SNS message is counted once  `integration` `green`
 
 - **Given** an in-memory DynamoDB fake supporting conditional put and ADD, and one Delivery event with messageId M
 - **When** the handler processes the same SNS record twice
@@ -65,7 +65,7 @@
 - **Test doubles:** DynamoDB replaced by in-memory fake (tests/test_ledger_ingest.py pattern); no AWS
 - **Test:** `tests/test_vdm_coverage_tdd.py::SC-001-d`
 
-#### SC-001-e — Counter and marker TTLs follow retention rules  `unit` `red`
+#### SC-001-e — Counter and marker TTLs follow retention rules  `unit` `green`
 
 - **Given** RETENTION_DAYS=396 and NOW=2026-10-24T00:00Z
 - **When** counters_for_event and the marker builder run
@@ -78,7 +78,7 @@
 
 **Priority:** P0 · **Type:** functional · **PRD:** §5 story 2 criterion 3; DL-004; A-002
 
-#### SC-002-a — Consumer Microsoft domains map to Microsoft without DNS  `unit` `red`
+#### SC-002-a — Consumer Microsoft domains map to Microsoft without DNS  `unit` `green`
 
 - **Given** domains outlook.com, hotmail.com, live.com, msn.com and an MX lookup that raises if called
 - **When** classify runs on each
@@ -87,7 +87,7 @@
 - **Test doubles:** MX lookup replaced by a function that raises
 - **Test:** `tests/test_vdm_coverage_tdd.py::SC-002-a`
 
-#### SC-002-b — Business domain classified by MX suffix  `unit` `red`
+#### SC-002-b — Business domain classified by MX suffix  `unit` `green`
 
 - **Given** acme.example whose MX is acme-example.mail.protection.outlook.com and beta.example whose MX is aspmx.l.google.com
 - **When** classify runs
@@ -96,7 +96,7 @@
 - **Test doubles:** stub MX resolver returning fixed records
 - **Test:** `tests/test_vdm_coverage_tdd.py::SC-002-b`
 
-#### SC-002-c — Unknown or failing MX maps to Other  `unit` `red`
+#### SC-002-c — Unknown or failing MX maps to Other  `unit` `green`
 
 - **Given** a domain whose MX lookup times out and a domain whose MX host matches no provider
 - **When** classify runs
@@ -105,7 +105,7 @@
 - **Test doubles:** stub resolver raising a timeout
 - **Test:** `tests/test_vdm_coverage_tdd.py::SC-002-c`
 
-#### SC-002-d — MX results are cached for 7 days in the data directory  `integration` `red`
+#### SC-002-d — MX results are cached for 7 days in the data directory  `integration` `green`
 
 - **Given** a temp data dir and a counting stub resolver
 - **When** classify runs twice for the same domain 6 days apart, then once more at day 8
@@ -118,7 +118,7 @@
 
 **Priority:** P0 · **Type:** functional · **PRD:** §5 story 2; DL-007; DL-008
 
-#### SC-003-a — Rates are complaints and bounces over deliveries  `unit` `red`
+#### SC-003-a — Rates are complaints and bounces over deliveries  `unit` `green`
 
 - **Given** provider Yahoo with 20,000 deliveries, 16 complaints and 300 permanent bounces
 - **When** build_breakdowns runs
@@ -128,7 +128,7 @@
 - **Data:** `{"bounces": 300, "complaints": 16, "deliveries": 20000}`
 - **Test:** `tests/test_vdm_coverage_tdd.py::SC-003-a`
 
-#### SC-003-b — Rate floor at 1,000 deliveries (boundary)  `unit` `red`
+#### SC-003-b — Rate floor at 1,000 deliveries (boundary)  `unit` `green`
 
 - **Given** providers with 999 and 1,000 deliveries and 1 complaint each
 - **When** build_breakdowns runs
@@ -137,7 +137,7 @@
 - **Test doubles:** none
 - **Test:** `tests/test_vdm_coverage_tdd.py::SC-003-b`
 
-#### SC-003-c — Rows sorted by deliveries descending  `unit` `red`
+#### SC-003-c — Rows sorted by deliveries descending  `unit` `green`
 
 - **Given** Google 30,000, Microsoft 12,000, Yahoo 20,000 deliveries
 - **When** build_breakdowns runs
@@ -146,7 +146,7 @@
 - **Test doubles:** none
 - **Test:** `tests/test_vdm_coverage_tdd.py::SC-003-c`
 
-#### SC-003-d — Range scopes counts and rates  `unit` `red`
+#### SC-003-d — Range scopes counts and rates  `unit` `green`
 
 - **Given** counters on 2026-10-20 (1,500 deliveries) and 2026-08-01 (5,000 deliveries) for Google
 - **When** build_breakdowns runs with since=2026-09-24 (30d)
@@ -155,7 +155,7 @@
 - **Test doubles:** none
 - **Test:** `tests/test_vdm_coverage_tdd.py::SC-003-d`
 
-#### SC-003-e — Mailbox providers section renders with rates and the floor note  `acceptance` `red`
+#### SC-003-e — Mailbox providers section renders with rates and the floor note  `acceptance` `green`
 
 - **Given** the dashboard in demo mode
 - **When** the page loads and the Range is switched from All to 30d
@@ -168,7 +168,7 @@
 
 **Priority:** P0 · **Type:** functional · **PRD:** §5 story 3; DL-009
 
-#### SC-004-a — Identity and config-set groupings share columns and floor  `unit` `red`
+#### SC-004-a — Identity and config-set groupings share columns and floor  `unit` `green`
 
 - **Given** counters for identities example.com (5,000) and news.example.com (400), config sets transactional (5,000) and (none) (400)
 - **When** build_breakdowns runs
@@ -181,7 +181,7 @@
 
 **Priority:** P0 · **Type:** functional · **PRD:** §5 story 4 criterion 1; DL-006
 
-#### SC-005-a — Failed DKIM becomes a high finding  `unit` `red`
+#### SC-005-a — Failed DKIM becomes a high finding  `unit` `green`
 
 - **Given** identities a.example (SUCCESS) and b.example (FAILED)
 - **When** auth_findings runs
@@ -194,7 +194,7 @@
 
 **Priority:** P0 · **Type:** functional · **PRD:** §5 story 4 criterion 2; DL-006
 
-#### SC-006-a — Missing custom MAIL FROM is medium  `unit` `red`
+#### SC-006-a — Missing custom MAIL FROM is medium  `unit` `green`
 
 - **Given** identity c.example with no MailFromAttributes.MailFromDomain
 - **When** auth_findings runs
@@ -203,7 +203,7 @@
 - **Test doubles:** DNS stub
 - **Test:** `tests/test_vdm_coverage_tdd.py::SC-006-a`
 
-#### SC-006-b — MAIL FROM SPF without amazonses include is medium  `unit` `red`
+#### SC-006-b — MAIL FROM SPF without amazonses include is medium  `unit` `green`
 
 - **Given** identity d.example with MAIL FROM bounce.d.example whose TXT is "v=spf1 -all"
 - **When** auth_findings runs
@@ -216,7 +216,7 @@
 
 **Priority:** P0 · **Type:** functional · **PRD:** §5 story 4 criterion 3; DL-006
 
-#### SC-007-a — DMARC decision table  `unit` `red`
+#### SC-007-a — DMARC decision table  `unit` `green`
 
 - **Given** domains with no _dmarc TXT, with "v=DMARC1; p=none; rua=mailto:r@x", with "v=DMARC1; p=quarantine", and with "v=DMARC1; p=reject; rua=mailto:r@x"
 - **When** auth_findings runs
@@ -229,7 +229,7 @@
 
 **Priority:** P0 · **Type:** functional · **PRD:** §5 story 4 criterion 4; §13 DNS
 
-#### SC-008-a — DNS timeout is not a finding  `unit` `red`
+#### SC-008-a — DNS timeout is not a finding  `unit` `green`
 
 - **Given** a resolver that raises a timeout for e.example
 - **When** auth_findings runs
@@ -238,7 +238,7 @@
 - **Test doubles:** DNS stub raising timeout
 - **Test:** `tests/test_vdm_coverage_tdd.py::SC-008-a`
 
-#### SC-008-b — Resolver is configured with a 2 second timeout  `unit` `red`
+#### SC-008-b — Resolver is configured with a 2 second timeout  `unit` `green`
 
 - **Given** the default resolver factory
 - **When** it is created
@@ -251,7 +251,7 @@
 
 **Priority:** P0 · **Type:** functional · **PRD:** §5 story 5; A-005
 
-#### SC-009-a — Complaint threshold boundaries  `unit` `red`
+#### SC-009-a — Complaint threshold boundaries  `unit` `green`
 
 - **Given** rows of 10,000 deliveries with 7, 8, 10 complaints
 - **When** threshold_findings runs
@@ -260,7 +260,7 @@
 - **Test doubles:** none
 - **Test:** `tests/test_vdm_coverage_tdd.py::SC-009-a`
 
-#### SC-009-b — Bounce threshold boundaries  `unit` `red`
+#### SC-009-b — Bounce threshold boundaries  `unit` `green`
 
 - **Given** rows of 10,000 deliveries with 499, 500, 1,000 permanent bounces
 - **When** threshold_findings runs
@@ -269,7 +269,7 @@
 - **Test doubles:** none
 - **Test:** `tests/test_vdm_coverage_tdd.py::SC-009-b`
 
-#### SC-009-c — Floor suppresses threshold findings  `unit` `red`
+#### SC-009-c — Floor suppresses threshold findings  `unit` `green`
 
 - **Given** a row with 999 deliveries and 5 complaints
 - **When** threshold_findings runs
@@ -282,7 +282,7 @@
 
 **Priority:** P0 · **Type:** functional · **PRD:** §5 story 6; DL-003; A-006
 
-#### SC-010-a — Brief has the seven sections in order  `unit` `red`
+#### SC-010-a — Brief has the seven sections in order  `unit` `green`
 
 - **Given** a dkim finding for b.example
 - **When** brief() renders it
@@ -291,7 +291,7 @@
 - **Test doubles:** none
 - **Test:** `tests/test_vdm_coverage_tdd.py::SC-010-a`
 
-#### SC-010-b — Commands survive the shell for any resource name (property)  `unit` `red`
+#### SC-010-b — Commands survive the shell for any resource name (property)  `unit` `green`
 
 - **Given** config-set names generated from printable ASCII including quotes, spaces, semicolons and dollar signs
 - **When** a routing brief is rendered and its fenced command is parsed with shlex.split
@@ -300,7 +300,7 @@
 - **Test doubles:** none
 - **Test:** `tests/test_vdm_coverage_tdd.py::SC-010-b`
 
-#### SC-010-c — Routing brief embeds the existing event-destination command  `unit` `red`
+#### SC-010-c — Routing brief embeds the existing event-destination command  `unit` `green`
 
 - **Given** a routing gap for config set legacy
 - **When** brief() renders it
@@ -309,7 +309,7 @@
 - **Test doubles:** none
 - **Test:** `tests/test_vdm_coverage_tdd.py::SC-010-c`
 
-#### SC-010-d — Clicking Fix copies the Markdown brief and names the resource  `acceptance` `red`
+#### SC-010-d — Clicking Fix copies the Markdown brief and names the resource  `acceptance` `green`
 
 - **Given** the dashboard in demo mode with clipboard permission
 - **When** the first Needs attention Fix button is clicked
@@ -322,7 +322,7 @@
 
 **Priority:** P0 · **Type:** functional · **PRD:** §5 story 7; A-003; DL-009
 
-#### SC-011-a — Repeat opens of one message count once  `integration` `red`
+#### SC-011-a — Repeat opens of one message count once  `integration` `green`
 
 - **Given** the in-memory DynamoDB fake and 3 Open events for message M to a yahoo.com recipient
 - **When** the handler processes them
@@ -331,7 +331,7 @@
 - **Test doubles:** in-memory DynamoDB fake
 - **Test:** `tests/test_vdm_coverage_tdd.py::SC-011-a`
 
-#### SC-011-b — Open and click rates use deliveries as denominator  `unit` `red`
+#### SC-011-b — Open and click rates use deliveries as denominator  `unit` `green`
 
 - **Given** Yahoo with 2,000 deliveries, 500 unique opens, 40 unique clicks
 - **When** build_breakdowns runs
@@ -340,7 +340,7 @@
 - **Test doubles:** none
 - **Test:** `tests/test_vdm_coverage_tdd.py::SC-011-b`
 
-#### SC-011-c — Engagement columns and MPP caveat are visible  `acceptance` `red`
+#### SC-011-c — Engagement columns and MPP caveat are visible  `acceptance` `green`
 
 - **Given** the dashboard in demo mode
 - **When** the Mailbox providers section renders
@@ -353,7 +353,7 @@
 
 **Priority:** P0 · **Type:** functional · **PRD:** §5 story 8; DL-003
 
-#### SC-012-a — Config set missing DELIVERY/OPEN/CLICK is flagged  `unit` `red`
+#### SC-012-a — Config set missing DELIVERY/OPEN/CLICK is flagged  `unit` `green`
 
 - **Given** config set transactional with event types BOUNCE, COMPLAINT only
 - **When** publishing_findings runs
@@ -362,7 +362,7 @@
 - **Test doubles:** none
 - **Test:** `tests/test_vdm_coverage_tdd.py::SC-012-a`
 
-#### SC-012-b — Identity topic without Delivery notifications is an info finding  `unit` `red`
+#### SC-012-b — Identity topic without Delivery notifications is an info finding  `unit` `green`
 
 - **Given** identity send0.example.com with bounce and complaint topics but no delivery topic
 - **When** publishing_findings runs
@@ -375,7 +375,7 @@
 
 **Priority:** P0 · **Type:** functional · **PRD:** §5 story 10; §6 States
 
-#### SC-013-a — Ledger not configured state  `unit` `red`
+#### SC-013-a — Ledger not configured state  `unit` `green`
 
 - **Given** ledger configured False
 - **When** build_breakdowns runs
@@ -384,7 +384,7 @@
 - **Test doubles:** none
 - **Test:** `tests/test_vdm_coverage_tdd.py::SC-013-a`
 
-#### SC-013-b — Complaints but no deliveries state  `unit` `red`
+#### SC-013-b — Complaints but no deliveries state  `unit` `green`
 
 - **Given** ledger rows with 5 complaints and zero DELIVERY counters
 - **When** build_breakdowns runs
@@ -393,7 +393,7 @@
 - **Test doubles:** none
 - **Test:** `tests/test_vdm_coverage_tdd.py::SC-013-b`
 
-#### SC-013-c — Ledger aggregate read failure becomes a collector warning  `integration` `red`
+#### SC-013-c — Ledger aggregate read failure becomes a collector warning  `integration` `green`
 
 - **Given** collect_all with a DynamoDB fake whose Query on AGG# partitions raises AccessDenied
 - **When** the report model is collected
@@ -402,7 +402,7 @@
 - **Test doubles:** boto3 clients replaced by fakes (no AWS)
 - **Test:** `tests/test_vdm_coverage_tdd.py::SC-013-c`
 
-#### SC-013-d — No delivery data yet is stated with a fix brief  `acceptance` `red`
+#### SC-013-d — No delivery data yet is stated with a fix brief  `acceptance` `green`
 
 - **Given** the dashboard with /api/report overridden so the ledger has complaints and no delivery counters
 - **When** the page renders
@@ -415,7 +415,7 @@
 
 **Priority:** P2 · **Type:** functional · **PRD:** §5 story 9
 
-#### SC-014-a — Demo model carries breakdowns and at least 3 Advisor findings  `unit` `red`
+#### SC-014-a — Demo model carries breakdowns and at least 3 Advisor findings  `unit` `green`
 
 - **Given** demo_model()
 - **When** it is built
@@ -428,7 +428,7 @@
 
 **Priority:** P0 · **Type:** constraint · **PRD:** §7 Constraints; DL-001; DL-003
 
-#### SC-015-a — A full collection makes no VDM or write calls  `integration` `red`
+#### SC-015-a — A full collection makes no VDM or write calls  `integration` `green`
 
 - **Given** collect_all with recording fake boto3 clients for every service
 - **When** a full collection runs
@@ -441,7 +441,7 @@
 
 **Priority:** P1 · **Type:** non-functional · **PRD:** §13 DNS; §13 Counter reads
 
-#### SC-016-a — DNS lookups capped at 120 per refresh  `integration` `red`
+#### SC-016-a — DNS lookups capped at 120 per refresh  `integration` `green`
 
 - **Given** 200 distinct recipient domains not in the static map and an empty MX cache
 - **When** providers are classified for one refresh
@@ -450,7 +450,7 @@
 - **Test doubles:** counting stub resolver
 - **Test:** `tests/test_vdm_coverage_tdd.py::SC-016-a`
 
-#### SC-016-b — Warm refresh re-reads only the last 2 days  `integration` `red`
+#### SC-016-b — Warm refresh re-reads only the last 2 days  `integration` `green`
 
 - **Given** a data dir with cached aggregates for 365 past days and a counting DynamoDB fake
 - **When** ledger aggregates are read

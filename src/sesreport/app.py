@@ -158,7 +158,7 @@ def _do_refresh() -> dict:
     log.info("refresh started")
     t0 = time.time()
     try:
-        model = demo_model() if CFG.demo else collect_all()
+        model = demo_model() if CFG.demo else collect_all(cache_dir=DATA_DIR)
     except Exception as e:  # noqa: BLE001 - surface any failure to the UI
         log.exception("refresh failed")
         STATE["last_error"] = f"{type(e).__name__}: {e}"

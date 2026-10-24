@@ -8,6 +8,10 @@ from __future__ import annotations
 import datetime as dt
 import random
 
+from . import advisor as _advisor
+from . import breakdowns as _breakdowns
+from .providers import classify as _classify
+
 
 def demo_model(seed: int = 7) -> dict:
     rng = random.Random(seed)
@@ -111,6 +115,8 @@ def demo_model(seed: int = 7) -> dict:
         ]
     ]
 
+    deliverability = _demo_deliverability(rng, today, config_sets)
+
     return {
         "meta": {
             "generated_at": today.isoformat(),
@@ -186,7 +192,10 @@ def demo_model(seed: int = 7) -> dict:
             "failed": 6,
             "pending": 0,
             "rows": [
-                {"name": f"send{i}.example.com", "type": "DOMAIN", "dkim_status": "SUCCESS", "verified": True, "sending": True}
+                {"name": f"send{i}.example.com", "type": "DOMAIN",
+                 "dkim_status": "FAILED" if i >= 34 else "SUCCESS", "verified": i < 34, "sending": i < 34,
+                 "mail_from_domain": "" if i in (3, 7) else f"bounce.send{i}.example.com",
+                 "mail_from_status": "" if i in (3, 7) else "SUCCESS"}
                 for i in range(40)
             ],
             "other_regions": [{"region": "us-west-2", "count": 1, "names": ["mail.demo.example"]}],
@@ -219,9 +228,87 @@ def demo_model(seed: int = 7) -> dict:
             "oldest_expires": (dt.date.fromisoformat(by_day[0]["date"]) + dt.timedelta(days=455)).isoformat(),
             "newest_expires": (dt.date.fromisoformat(by_day[-1]["date"]) + dt.timedelta(days=455)).isoformat(),
         },
+        "breakdowns": deliverability["breakdowns"],
+        "advisor": None,  # filled below once identities/coverage exist
         "errors": [],
         "collect_ms": 12,
     }
+
+
+class _DemoResolver:
+    """Deterministic DNS for demo mode: no network calls."""
+
+    lookups = 0
+    timeouts = 0
+    MX = {"acme-corp.example": ["acme-corp-example.mail.protection.outlook.com"],
+          "studio.example": ["aspmx.l.google.com"]}
+
+    def txt(self, name: str) -> list[str]:
+        self.lookups += 1
+        if name.startswith("_dmarc.send1.") or name.startswith("_dmarc.send2."):
+            return ["v=DMARC1; p=none; rua=mailto:dmarc@example.com"]
+        if name.startswith("_dmarc.send5."):
+            return []
+        if name.startswith("_dmarc."):
+            return ["v=DMARC1; p=quarantine; rua=mailto:dmarc@example.com"]
+        if name == "bounce.send4.example.com":
+            return ["v=spf1 -all"]
+        return ["v=spf1 include:amazonses.com ~all"]
+
+    def mx(self, name: str) -> list[str]:
+        self.lookups += 1
+        return self.MX.get(name, [])
+
+
+# (domain, deliveries/day, complaint rate, permanent-bounce rate, open rate, click rate)
+_DEMO_TRAFFIC = [
+    ("gmail.com", 300, 0.0003, 0.008, 0.31, 0.024),
+    ("yahoo.com", 180, 0.0007, 0.012, 0.22, 0.015),
+    ("outlook.com", 90, 0.0004, 0.020, 0.18, 0.012),
+    ("hotmail.com", 40, 0.0006, 0.031, 0.16, 0.010),
+    ("icloud.com", 45, 0.0002, 0.006, 0.52, 0.020),
+    ("acme-corp.example", 18, 0.0, 0.004, 0.41, 0.060),
+    ("studio.example", 9, 0.0, 0.002, 0.38, 0.050),
+    ("tinyisp.example", 6, 0.0, 0.01, 0.30, 0.0),
+]
+
+
+def _demo_deliverability(rng: random.Random, today: dt.datetime, config_sets: list[dict]) -> dict:
+    counters, rows = [], []
+    for back in range(120):
+        day = (today - dt.timedelta(days=back)).date().isoformat()
+        for domain, per_day, cr, br, orate, crate in _DEMO_TRAFFIC:
+            n = max(0, int(rng.gauss(per_day, per_day * 0.15)))
+            for identity, cs, share in (("send0.example.com", "transactional", 0.7), ("news.example.com", "marketing", 0.3)):
+                k = int(n * share)
+                if not k:
+                    continue
+                base = {"day": day, "domain": domain, "identity": identity, "config_set": cs}
+                counters += [{**base, "event": "DELIVERY", "n": k},
+                             {**base, "event": "OPEN_UNIQUE", "n": int(k * orate)},
+                             {**base, "event": "CLICK_UNIQUE", "n": int(k * crate)}]
+                for event, rate in (("COMPLAINT", cr), ("BOUNCE", br)):
+                    for _ in range(sum(1 for _ in range(k) if rng.random() < rate)):
+                        rows.append({"day": day, "recipient_domain": domain, "sending_identity": identity,
+                                     "config_set": cs, "event_type": event, "simulator": False})
+    mx = _DemoResolver.MX
+    classify = lambda d: _classify(d, mx=lambda x: mx.get(x, []))  # noqa: E731
+    return {"breakdowns": _breakdowns.build_all_ranges(counters, rows, today.date(), classify=classify)}
+
+
+def _with_advisor(model: dict) -> dict:
+    window = model["breakdowns"]["ranges"]["30"]
+    model["advisor"] = _advisor.run(identities=model["identities"]["rows"], coverage=model["suppression_coverage"],
+                                    config_sets=model["config_sets"], identity_feedback=model["identity_feedback"],
+                                    window=window, resolver=_DemoResolver(), region=model["meta"]["region"])
+    return model
+
+
+_demo_model = demo_model
+
+
+def demo_model(seed: int = 7) -> dict:  # noqa: F811 - wraps the base builder with the Advisor
+    return _with_advisor(_demo_model(seed))
 
 
 if __name__ == "__main__":

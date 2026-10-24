@@ -8,6 +8,22 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **VDM-equivalent deliverability, with VDM off** (spec `docs/prd/vdm-coverage.md`,
+  TDD artifact `tdd/vdm-coverage.tdd.yaml`):
+  - The ledger Lambda now counts Delivery, Open and Click events into daily
+    counters per recipient domain, sending identity and config set. It stores no
+    addresses and dedupes per SES message ID for 30 days.
+  - A new **Mailbox providers** section shows complaint, bounce, open and click
+    rates per provider, identity and config set. Providers are classified by
+    domain map plus MX lookup. Rates appear from 1,000 deliveries and follow the
+    Range filter.
+  - A built-in **Advisor** checks DKIM, custom MAIL FROM/SPF and DMARC, complaint
+    and bounce thresholds, and Delivery/Open/Click publishing gaps. It feeds
+    Needs attention and a new Authentication grid.
+  - Every **Fix** button copies an agent-ready Markdown brief.
+  - No VDM API is called (`BatchGetMetricData` and `ListRecommendations` are
+    never used). The only new dependency is `dnspython`.
+
 - **Dashboard redesign** (Ocean Depths theme, light and dark modes with a
   toggle): a verdict panel with the rolling rate drawn against the alert and
   AWS review lines; KPI tiles with mini-charts and meters; a severity-ranked
@@ -47,6 +63,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- README IAM list used a non-existent `sesv2:` prefix; SES v2 actions are authorised as `ses:` (#23).
 - **Security (from QA of the redesign):**
   - Table cells now render API values as text, so values such as a crafted recipient address or ARF string can no longer inject markup or script into the page. Attribute values and date fallbacks are escaped too.
   - CSV exports prefix cells that start with `= + - @` so spreadsheets keep them as text.
