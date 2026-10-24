@@ -42,7 +42,7 @@ try { const t = localStorage.getItem('sesreport-theme'); if (t === 'light' || t 
   --red:#c8402b; --redtx:#b3341f; --ok:#17663f; --warn:#8a5a00;
   --glow:rgba(45,139,139,.10); --shadow:0 18px 40px -30px rgba(26,35,50,.45); color-scheme:light; }
 * { box-sizing:border-box; }
-html { scroll-behavior:smooth; scroll-padding-top:72px; }
+html { scroll-behavior:smooth; scroll-padding-top:calc(var(--navh, 60px) + 14px); }
 body { margin:0; color:var(--ink); font:15px/1.55 var(--sans); background:var(--bg);
   background-image:radial-gradient(1100px 520px at 78% -12%, var(--glow), transparent 62%),
     radial-gradient(700px 420px at -10% 0%, var(--glow), transparent 60%);
@@ -78,6 +78,8 @@ td:first-child { color:var(--ink); }
 th.sortable { cursor:pointer; user-select:none; }
 th.sortable:hover { color:var(--ink); }
 th .arrow { opacity:.6; font-size:10px; }
+th .arrow:empty { display:none; }
+th .arrow:not(:empty) { margin-left:4px; }
 tr:hover td { background:var(--card2); }
 .mono { font-family:var(--mono); font-size:12px; }
 td.num, .num { font-variant-numeric:tabular-nums; }
@@ -173,6 +175,7 @@ select.search { cursor:pointer; max-width:100%; }
 .legendrow { display:flex; flex-wrap:wrap; gap:6px 16px; font-size:12.5px; color:var(--ink2); margin-top:2px; }
 .legendrow .k { display:inline-flex; align-items:center; gap:7px; min-width:0; max-width:100%; overflow-wrap:anywhere; }
 .legendrow .k > .sw, .legendrow .k > .ic { flex:0 0 auto; }
+.legendrow .k b { white-space:nowrap; flex:0 0 auto; }
 .sw { display:inline-block; width:10px; height:10px; border-radius:3px; flex:0 0 auto; }
 .sw.ring { border-radius:50%; background:transparent; border:2px solid var(--warn); }
 .sw.disc { border-radius:50%; background:var(--ink); }
@@ -207,7 +210,7 @@ select.search { cursor:pointer; max-width:100%; }
 .attn-item.sev-info .ai { color:var(--acctx); background:color-mix(in srgb, var(--acc) 16%, transparent); }
 .attn-item .at { font-weight:600; font-size:13.5px; overflow-wrap:anywhere; }
 .attn-item .ad { color:var(--mut); font-size:12.5px; margin-top:1px; overflow-wrap:anywhere; }
-@media(max-width:640px){ .attn-item{grid-template-columns:auto minmax(0,1fr);} .attn-item > button{grid-column:2; justify-self:start;} }
+@media(max-width:640px){ .attn-item{grid-template-columns:auto minmax(0,1fr);} .attn-item > button, .attn-item > .tag{grid-column:2; justify-self:start;} }
 .allclear { display:flex; align-items:center; gap:10px; color:var(--ok); }
 
 /* --------------------------------------------------------------- change strip */
@@ -289,7 +292,8 @@ details.more[open] > summary::before { transform:rotate(90deg); }
   .matrix tr:last-child { border-bottom:0; }
   .matrix td { display:inline-flex; align-items:center; gap:5px; padding:0; border:0; text-align:left; font-size:12px; }
   .matrix td:first-child { flex:1 0 100%; font-size:12.5px; font-weight:600; }
-  .matrix td[data-label]::before { content:attr(data-label); color:var(--mut); font-size:10.5px; font-weight:600; letter-spacing:.3px; }
+  .matrix td[data-label="MAIL FROM"] { flex:1 0 100%; }
+  .matrix td[data-label]::before { white-space:nowrap; content:attr(data-label); color:var(--mut); font-size:10.5px; font-weight:600; letter-spacing:.3px; }
   .matrix td.fixcell { margin-left:auto; }
   .matrix td.fixcell:empty { display:none; }
   .matrix tr:hover td { background:none; }
@@ -729,7 +733,7 @@ function makeTable({columns, rows, search=true, height=null, filters=[], csv=nul
   const thead = el('thead'), trh = el('tr');
   for (const c of columns) {
     const th = el('th', {class:'sortable' + (/\bnum\b/.test(c.cls||'') ? ' num' : '')});
-    const btn = el('button', {type:'button', class:'thbtn', 'aria-label':`Sort by ${c.title}`, html:`${esc(c.title)} <span class="arrow"></span>`});
+    const btn = el('button', {type:'button', class:'thbtn', 'aria-label':`Sort by ${c.title}`, html:`${esc(c.title)}<span class="arrow"></span>`});
     if (c.hint) btn.title = c.hint;
     btn.addEventListener('click', ()=>{ if(sortKey===c.key) sortDir*=-1; else {sortKey=c.key; sortDir=1;} draw(); });
     th.append(btn);
@@ -1267,7 +1271,8 @@ const RANGE_LABEL = {'30':'last 30 days','90':'last 90 days','180':'last 180 day
 function rateCell(v, line) {
   if (v == null) return '<span class="muted">—</span>';
   const lvl = line && v >= line.review ? 'bad' : line && v >= line.alert ? 'warn' : '';
-  return `<span class="${lvl}">${(v*100).toFixed(line ? 3 : 1)}%</span>`;
+  const note = lvl === 'bad' ? ' over the review line' : lvl === 'warn' ? ' over the alert line' : '';
+  return `<span class="${lvl}"${note ? ` title="${note.trim()}"` : ''}>${lvl ? '▲ ' : ''}${(v*100).toFixed(line ? 3 : 1)}%${note ? `<span class="sr">${note}</span>` : ''}</span>`;
 }
 function breakdownColumns(nameTitle) {
   const cl = {alert:0.0008, review:0.001}, bl = {alert:0.05, review:0.10};
@@ -1683,6 +1688,13 @@ function observeSections() {
   }, {rootMargin:'-30% 0px -60% 0px'});
   for (const a of links) { const t = document.querySelector(a.getAttribute('href')); if (t) secObserver.observe(t); }
 }
+// keep jump targets below the sticky nav, which wraps to 2-3 rows on phones
+(() => {
+  const nav = document.getElementById('secnav');
+  const set = () => document.documentElement.style.setProperty('--navh', nav.offsetHeight + 'px');
+  set();
+  if (window.ResizeObserver) new ResizeObserver(set).observe(nav);
+})();
 window.addEventListener('scroll', () => {
   const nav = document.getElementById('secnav');
   nav.classList.toggle('stuck', nav.getBoundingClientRect().top <= 0 && window.scrollY > 40);

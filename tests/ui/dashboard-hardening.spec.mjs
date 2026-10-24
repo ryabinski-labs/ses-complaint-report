@@ -124,3 +124,24 @@ for (const scheme of ['light', 'dark']) {
     await ctx.close();
   });
 }
+
+// Jumping to a section from the sticky nav must not hide its heading under the nav,
+// which wraps to two or three rows on a phone.
+for (const width of [390, 320, 1440]) {
+  test(`nav jump keeps section headings visible at ${width}px`, async ({ browser }) => {
+    const ctx = await browser.newContext({ viewport: { width, height: 800 }, reducedMotion: 'reduce' });
+    const page = await ctx.newPage();
+    await page.goto('/');
+    await expect(page.locator('#providerTable tbody tr').first()).toBeVisible();
+    for (const id of ['providers', 'records', 'coverage', 'retention']) {
+      await page.click(`#secnav a[href="#${id}"]`);
+      await page.waitForTimeout(150);
+      const { navBottom, headTop } = await page.evaluate((sid) => ({
+        navBottom: document.getElementById('secnav').getBoundingClientRect().bottom,
+        headTop: document.querySelector(`#${sid} h2`).getBoundingClientRect().top,
+      }), id);
+      expect(headTop, `#${id} heading under the nav`).toBeGreaterThanOrEqual(navBottom);
+    }
+    await ctx.close();
+  });
+}
