@@ -1,0 +1,29 @@
+{
+  "_comment": "Consumer mailbox domains -> provider. Anything else is classified by its MX record (see mx_suffixes).",
+  "domains": {
+    "gmail.com": "Google", "googlemail.com": "Google",
+    "outlook.com": "Microsoft", "hotmail.com": "Microsoft", "live.com": "Microsoft", "msn.com": "Microsoft",
+    "hotmail.co.uk": "Microsoft", "outlook.de": "Microsoft", "hotmail.fr": "Microsoft", "live.co.uk": "Microsoft",
+    "yahoo.com": "Yahoo", "yahoo.co.uk": "Yahoo", "yahoo.fr": "Yahoo", "yahoo.de": "Yahoo", "ymail.com": "Yahoo",
+    "rocketmail.com": "Yahoo", "aol.com": "Yahoo", "aim.com": "Yahoo", "verizon.net": "Yahoo",
+    "icloud.com": "Apple", "me.com": "Apple", "mac.com": "Apple",
+    "proton.me": "Proton", "protonmail.com": "Proton", "pm.me": "Proton",
+    "comcast.net": "Comcast", "xfinity.com": "Comcast",
+    "att.net": "AT&T", "sbcglobal.net": "AT&T", "bellsouth.net": "AT&T",
+    "gmx.com": "GMX", "gmx.net": "GMX", "gmx.de": "GMX", "web.de": "Web.de",
+    "zoho.com": "Zoho", "fastmail.com": "Fastmail", "yandex.ru": "Yandex", "yandex.com": "Yandex",
+    "mail.ru": "Mail.ru", "qq.com": "Tencent", "163.com": "NetEase"
+  },
+  "mx_suffixes": [
+    ["google.com", "Google"], ["googlemail.com", "Google"],
+    ["protection.outlook.com", "Microsoft"], ["outlook.com", "Microsoft"], ["hotmail.com", "Microsoft"],
+    ["yahoodns.net", "Yahoo"],
+    ["icloud.com", "Apple"],
+    ["protonmail.ch", "Proton"],
+    ["comcast.net", "Comcast"],
+    ["zoho.com", "Zoho"], ["zoho.eu", "Zoho"],
+    ["messagingengine.com", "Fastmail"],
+    ["gmx.net", "GMX"], ["web.de", "Web.de"],
+    ["yandex.net", "Yandex"], ["yandex.ru", "Yandex"]
+  ]
+}

@@ -101,3 +101,47 @@ test('no NaN or undefined text when there is no complaint history', async ({ pag
   await expect(page.locator('#overview')).toBeVisible();
   expect(await page.textContent('#app')).not.toMatch(/\bNaN\b|undefined|Invalid Date/);
 });
+
+// The nav attention badge is small bold text: it must clear WCAG AA (4.5:1) in both themes.
+for (const scheme of ['light', 'dark']) {
+  test(`nav attention badge has AA contrast in ${scheme}`, async ({ browser }) => {
+    const ctx = await browser.newContext({ colorScheme: scheme, reducedMotion: 'reduce' });
+    const page = await ctx.newPage();
+    await page.goto('/');
+    const badge = page.locator('#secnav .alertcount');
+    await expect(badge).toBeVisible();
+    const ratio = await badge.evaluate((el) => {
+      const rgb = (c) => c.match(/[\d.]+/g).slice(0, 4).map(Number);
+      const lum = ([r, g, b]) => [r, g, b].map((v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; })
+        .reduce((a, v, i) => a + v * [0.2126, 0.7152, 0.0722][i], 0);
+      const fg = rgb(getComputedStyle(el).color);
+      const bg = rgb(getComputedStyle(el).backgroundColor);
+      if (bg.length === 4 && bg[3] < 1) return 0; // translucent badge: contrast depends on what is behind it
+      const [a, b] = [lum(fg), lum(bg)].sort((x, y) => y - x);
+      return (a + 0.05) / (b + 0.05);
+    });
+    expect(ratio).toBeGreaterThanOrEqual(4.5);
+    await ctx.close();
+  });
+}
+
+// Jumping to a section from the sticky nav must not hide its heading under the nav,
+// which wraps to two or three rows on a phone.
+for (const width of [390, 320, 1440]) {
+  test(`nav jump keeps section headings visible at ${width}px`, async ({ browser }) => {
+    const ctx = await browser.newContext({ viewport: { width, height: 800 }, reducedMotion: 'reduce' });
+    const page = await ctx.newPage();
+    await page.goto('/');
+    await expect(page.locator('#providerTable tbody tr').first()).toBeVisible();
+    for (const id of ['providers', 'records', 'coverage', 'retention']) {
+      await page.click(`#secnav a[href="#${id}"]`);
+      await page.waitForTimeout(150);
+      const { navBottom, headTop } = await page.evaluate((sid) => ({
+        navBottom: document.getElementById('secnav').getBoundingClientRect().bottom,
+        headTop: document.querySelector(`#${sid} h2`).getBoundingClientRect().top,
+      }), id);
+      expect(headTop, `#${id} heading under the nav`).toBeGreaterThanOrEqual(navBottom);
+    }
+    await ctx.close();
+  });
+}

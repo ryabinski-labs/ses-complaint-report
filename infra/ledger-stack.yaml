@@ -155,7 +155,7 @@ Resources:
     DependsOn: IngestLogGroup
     Properties:
       FunctionName: !Sub '${AWS::StackName}-ingest'
-      Description: Normalise SES bounce/complaint feedback into the self-owned ledger
+      Description: Normalise SES bounce/complaint feedback and count deliveries, opens and clicks in the self-owned ledger
       Runtime: python3.12
       Handler: index.handler
       Architectures: [arm64]

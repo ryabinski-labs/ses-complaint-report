@@ -194,6 +194,117 @@ def records_for_event(event: dict, source: str, sns_message_id: str, now: dt.dat
     return out
 
 
+# Delivery, Open and Click events are counted, never stored per message: one
+# counter item per day x recipient domain x sending identity x config set, so
+# per-provider rates get a denominator without keeping any recipient address.
+COUNTED_EVENTS = {"Delivery": "DELIVERY", "Open": "OPEN_UNIQUE", "Click": "CLICK_UNIQUE"}
+MARKER_DAYS = 30
+NO_CONFIG_SET = "(none)"
+
+
+def _counted_recipients(kind: str, event: dict) -> list[str]:
+    if kind == "Delivery":
+        return list((event.get("delivery") or {}).get("recipients") or [])
+    # Open/Click apply to the message, so attribute them to its recipients.
+    return list((event.get("mail") or {}).get("destination") or [])
+
+
+def _counted_ts(kind: str, event: dict) -> str:
+    body = event.get(kind.lower()) or {}
+    return body.get("timestamp") or (event.get("mail") or {}).get("timestamp") or ""
+
+
+def _key(part: str) -> str:
+    """Percent-encode the key separator so a '#' in a name cannot shift fields."""
+    return part.replace("%", "%25").replace("#", "%23")
+
+
+def counters_for_event(event: dict, now: dt.datetime) -> list[dict]:
+    """Counter increments for a Delivery, Open or Click event (pure).
+
+    Returns ``[{"pk", "sk", "n", "ttl"}]`` with one entry per recipient domain;
+    any other event type returns ``[]``. Keys carry domains only.
+    """
+    kind = _event_kind(event)
+    if kind not in COUNTED_EVENTS:
+        return []
+    ts = _parse_ts(_counted_ts(kind, event)) or now
+    identity = _sending_identity(event) or "(unknown)"
+    config_set = _config_set(event) or NO_CONFIG_SET
+    per_domain: dict[str, int] = {}
+    for r in _counted_recipients(kind, event):
+        r = (r or "").strip()
+        if "@" not in r:
+            continue
+        domain = r.rsplit("@", 1)[1].lower()
+        per_domain[domain] = per_domain.get(domain, 0) + 1
+    ttl = int(now.timestamp()) + RETENTION_DAYS * 86400
+    return [
+        {
+            "pk": f"AGG#{ts.date().isoformat()}",
+            "sk": f"{_key(domain)}#{_key(identity)}#{_key(config_set)}#{COUNTED_EVENTS[kind]}",
+            "n": n,
+            "ttl": ttl,
+        }
+        for domain, n in sorted(per_domain.items())
+    ]
+
+
+def marker_for_event(event: dict, now: dt.datetime) -> dict | None:
+    """Dedupe marker: the first write per (message, counted event) wins, so an
+    SNS redelivery or a repeat open of the same message is counted once."""
+    kind = _event_kind(event)
+    message_id = (event.get("mail") or {}).get("messageId") or ""
+    if kind not in COUNTED_EVENTS or not message_id:
+        return None
+    sk = COUNTED_EVENTS[kind]
+    if kind == "Delivery":
+        # SES may split one multi-recipient message into several Delivery events;
+        # each distinct recipient set counts once, a redelivery of the same set does not.
+        recips = ",".join(sorted((r or "").strip().lower() for r in _counted_recipients(kind, event)))
+        sk = f"{sk}#{hashlib.sha256(recips.encode('utf-8')).hexdigest()[:16]}"
+    return {
+        "pk": f"SEEN#{message_id}",
+        "sk": sk,
+        "ttl": int(now.timestamp()) + MARKER_DAYS * 86400,
+    }
+
+
+def _is_conditional_failure(exc: Exception) -> bool:
+    return getattr(exc, "response", {}).get("Error", {}).get("Code") == "ConditionalCheckFailedException"
+
+
+def _count(event: dict, now: dt.datetime) -> int:
+    updates = counters_for_event(event, now)
+    if not updates:
+        return 0
+    table = _table()
+    marker = marker_for_event(event, now)
+    if marker:
+        try:
+            table.put_item(
+                Item={"recipient_hash": marker["pk"], "sk": marker["sk"], "ttl": marker["ttl"]},
+                ConditionExpression="attribute_not_exists(recipient_hash)",
+            )
+        except Exception as exc:  # noqa: BLE001
+            if _is_conditional_failure(exc):
+                return 0  # already counted
+            raise  # fail the invocation so SNS retries; the marker makes the retry safe
+    done = 0
+    for u in updates:
+        try:
+            table.update_item(
+                Key={"recipient_hash": u["pk"], "sk": u["sk"]},
+                UpdateExpression="ADD n :n SET #ttl = :ttl",
+                ExpressionAttributeNames={"#ttl": "ttl"},
+                ExpressionAttributeValues={":n": u["n"], ":ttl": u["ttl"]},
+            )
+            done += 1
+        except Exception as exc:  # noqa: BLE001 - one bad counter must not drop the batch
+            log.warning("[ledger] counter update failed for sk=%s: %s", u["sk"], exc)
+    return done
+
+
 def _confirm_subscription(url: str) -> None:
     from urllib.parse import urlparse
 
@@ -251,6 +362,10 @@ def handler(event, context):  # noqa: ARG001 - Lambda signature
             continue
 
         topic_name = (sns.get("TopicArn") or "").split(":")[-1]
+        if _event_kind(ses_event) in COUNTED_EVENTS:
+            # errors propagate on purpose: SNS retries the delivery and the dedupe marker keeps it idempotent
+            written += _count(ses_event, dt.datetime.now(dt.timezone.utc))
+            continue
         try:
             items = records_for_event(
                 ses_event,

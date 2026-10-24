@@ -42,7 +42,7 @@ try { const t = localStorage.getItem('sesreport-theme'); if (t === 'light' || t 
   --red:#c8402b; --redtx:#b3341f; --ok:#17663f; --warn:#8a5a00;
   --glow:rgba(45,139,139,.10); --shadow:0 18px 40px -30px rgba(26,35,50,.45); color-scheme:light; }
 * { box-sizing:border-box; }
-html { scroll-behavior:smooth; scroll-padding-top:72px; }
+html { scroll-behavior:smooth; scroll-padding-top:calc(var(--navh, 60px) + 14px); }
 body { margin:0; color:var(--ink); font:15px/1.55 var(--sans); background:var(--bg);
   background-image:radial-gradient(1100px 520px at 78% -12%, var(--glow), transparent 62%),
     radial-gradient(700px 420px at -10% 0%, var(--glow), transparent 60%);
@@ -78,6 +78,8 @@ td:first-child { color:var(--ink); }
 th.sortable { cursor:pointer; user-select:none; }
 th.sortable:hover { color:var(--ink); }
 th .arrow { opacity:.6; font-size:10px; }
+th .arrow:empty { display:none; }
+th .arrow:not(:empty) { margin-left:4px; }
 tr:hover td { background:var(--card2); }
 .mono { font-family:var(--mono); font-size:12px; }
 td.num, .num { font-variant-numeric:tabular-nums; }
@@ -130,7 +132,7 @@ select.search { cursor:pointer; max-width:100%; }
 .secnav a { flex:0 0 auto; text-decoration:none; color:var(--mut); font-size:12.5px; font-weight:500; padding:6px 12px; border-radius:20px; transition:color .15s ease, background .15s ease; }
 .secnav a:hover { color:var(--ink); background:var(--card); }
 .secnav a[aria-current="true"] { color:var(--ink); background:var(--card2); }
-.secnav .alertcount { display:inline-grid; place-items:center; min-width:17px; height:17px; padding:0 5px; margin-left:5px; border-radius:9px; font-size:10.5px; font-weight:600; background:color-mix(in srgb, var(--warn) 22%, transparent); color:var(--warn); }
+.secnav .alertcount { display:inline-grid; place-items:center; min-width:17px; height:17px; padding:0 5px; margin-left:5px; border-radius:9px; font-size:10.5px; font-weight:600; background:var(--warn); color:var(--card); }
 
 /* --------------------------------------------------------------- hero */
 .hero { display:grid; grid-template-columns:minmax(0,1.25fr) minmax(0,1fr); gap:16px; margin-top:18px; }
@@ -173,6 +175,7 @@ select.search { cursor:pointer; max-width:100%; }
 .legendrow { display:flex; flex-wrap:wrap; gap:6px 16px; font-size:12.5px; color:var(--ink2); margin-top:2px; }
 .legendrow .k { display:inline-flex; align-items:center; gap:7px; min-width:0; max-width:100%; overflow-wrap:anywhere; }
 .legendrow .k > .sw, .legendrow .k > .ic { flex:0 0 auto; }
+.legendrow .k b { white-space:nowrap; flex:0 0 auto; }
 .sw { display:inline-block; width:10px; height:10px; border-radius:3px; flex:0 0 auto; }
 .sw.ring { border-radius:50%; background:transparent; border:2px solid var(--warn); }
 .sw.disc { border-radius:50%; background:var(--ink); }
@@ -207,7 +210,7 @@ select.search { cursor:pointer; max-width:100%; }
 .attn-item.sev-info .ai { color:var(--acctx); background:color-mix(in srgb, var(--acc) 16%, transparent); }
 .attn-item .at { font-weight:600; font-size:13.5px; overflow-wrap:anywhere; }
 .attn-item .ad { color:var(--mut); font-size:12.5px; margin-top:1px; overflow-wrap:anywhere; }
-@media(max-width:640px){ .attn-item{grid-template-columns:auto minmax(0,1fr);} .attn-item > button{grid-column:2; justify-self:start;} }
+@media(max-width:640px){ .attn-item{grid-template-columns:auto minmax(0,1fr);} .attn-item > button, .attn-item > .tag{grid-column:2; justify-self:start;} }
 .allclear { display:flex; align-items:center; gap:10px; color:var(--ok); }
 
 /* --------------------------------------------------------------- change strip */
@@ -289,7 +292,8 @@ details.more[open] > summary::before { transform:rotate(90deg); }
   .matrix tr:last-child { border-bottom:0; }
   .matrix td { display:inline-flex; align-items:center; gap:5px; padding:0; border:0; text-align:left; font-size:12px; }
   .matrix td:first-child { flex:1 0 100%; font-size:12.5px; font-weight:600; }
-  .matrix td[data-label]::before { content:attr(data-label); color:var(--mut); font-size:10.5px; font-weight:600; letter-spacing:.3px; }
+  .matrix td[data-label="MAIL FROM"] { flex:1 0 100%; }
+  .matrix td[data-label]::before { white-space:nowrap; content:attr(data-label); color:var(--mut); font-size:10.5px; font-weight:600; letter-spacing:.3px; }
   .matrix td.fixcell { margin-left:auto; }
   .matrix td.fixcell:empty { display:none; }
   .matrix tr:hover td { background:none; }
@@ -348,6 +352,8 @@ th.sortable { padding:0; }
   .tablewrap tbody { display:block; }
   .tablewrap tr { display:block; border:1px solid var(--line); border-radius:12px; background:var(--card); margin:9px 0; padding:5px 2px 7px; }
   .tablewrap td { display:block; padding:4px 12px; border:0; overflow-wrap:anywhere; }
+  .tablewrap tr { display:grid !important; grid-template-columns:minmax(0,1fr) minmax(0,1fr); }
+  .tablewrap td:first-child { grid-column:1 / -1; }
   .tablewrap td:first-child { position:static; background:none; padding-bottom:6px; border-bottom:1px solid var(--line); margin-bottom:4px; }
   .tablewrap td::before { content:attr(data-label); display:block; color:var(--mut); font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:.5px; margin-bottom:1px; }
   .tablewrap td:first-child::before { content:none; }
@@ -409,6 +415,7 @@ body::-webkit-scrollbar-thumb, .tablewrap::-webkit-scrollbar-thumb, .matrixwrap:
   <a href="#overview">Overview</a>
   <a href="#trend">Trend</a>
   <a href="#attribution">Attribution</a>
+  <a href="#providers">Providers</a>
   <a href="#records">Records</a>
   <a href="#coverage">Coverage</a>
   <a href="#infra">Infrastructure</a>
@@ -599,6 +606,12 @@ function buildMarkdown() {
   L.push(`- CloudWatch recorded: **${att.cloudwatch_recorded ?? '—'}** · attributed recipient records: **${att.records ?? '—'}** (real **${att.real_records ?? '—'}**, mailbox-simulator **${att.simulator_records ?? '—'}**)`);
   for (const r of (m.complaint_records||[])) L.push(`- \`${r.email}\` — ${r.store}${r.detail?` · ${r.detail}`:''}${r.simulator?' **(simulator/test)**':''}`);
   L.push('');
+  const prov = m.breakdowns?.ranges?.['30']?.providers || [];
+  if (prov.length) {
+    L.push('## Mailbox providers (last 30 days, ledger)');
+    for (const r of prov) L.push(`- ${r.name}: ${fmtInt(r.deliveries)} deliveries, ${r.complaints} complaints${r.complaint_rate!=null?` (${(r.complaint_rate*100).toFixed(3)}%)`:` (${r.rate_note})`}`);
+    L.push('');
+  }
   L.push(`_Read-only audit · generated by ses-complaint-report_`);
   return L.join('\n');
 }
@@ -620,9 +633,27 @@ function fixCommand(cs) {
   --configuration-set-name ${shq(cs)} \\
   --event-destination ${shq(dest)}`;
 }
-function copyFix(cs) { copyText(fixCommand(cs), `Fix command for ${cs} copied`); }
-const fixButton = (cs, label='Copy fix') =>
-  `<button class="ghost mini" type="button" data-fix="${esc(cs)}" title="Copy an AWS CLI command that routes BOUNCE/COMPLAINT for this config set to CloudWatch">${icon('copy')} ${label}</button>`;
+// Every Fix button copies an agent-ready Markdown brief. Briefs come from the
+// server-side Advisor (model.advisor.findings[].brief); a routing gap the
+// Advisor did not cover falls back to a brief built here in the same shape.
+const BRIEFS = new Map();
+function registerBrief(id, resource, md) { BRIEFS.set(id, {resource, md}); return id; }
+function routingBriefJs(cs) {
+  return `# Fix: route BOUNCE/COMPLAINT events for ${cs}\n\n## Problem\nConfiguration set \`${cs}\` has no event destination for BOUNCE or COMPLAINT events.\n\n## Affected resource\n\`SES configuration set ${cs}\`\n\n## Why it matters\nComplaints sent through this path never reach the feedback handler. SES still suppresses the address at account level.\n\n## Steps\n1. Add a CloudWatch event destination that matches BOUNCE and COMPLAINT.\n\n## Commands\n\`\`\`sh\n${fixCommand(cs)}\n\`\`\`\n\n## Verify\n- The coverage grid shows ticks for BOUNCE and COMPLAINT after the next refresh.\n\n## Rollback\n- Delete the event destination created above.\n`;
+}
+function copyFix(id) {
+  const b = BRIEFS.get(id);
+  if (!b) return toast('No fix brief available for this item');
+  copyText(b.md, `Fix brief for ${b.resource} copied as Markdown`);
+}
+const fixButton = (id, label='Copy fix') =>
+  `<button class="ghost mini" type="button" data-fix="${esc(id)}" title="Copy a Markdown fix brief (problem, steps, commands, verify, rollback) for an agent to implement">${icon('copy')} ${label}</button>`;
+function routingFixId(cs) {
+  const f = (state.model.advisor?.findings || []).find(x => x.kind === 'routing' && x.resource === cs);
+  return f ? registerBrief(f.id, f.resource, f.brief) : registerBrief(`routing:${cs}`, cs, routingBriefJs(cs));
+}
+const KIND_ICON = {dkim:'shield', mail_from:'route', spf:'shield', dmarc:'shield', routing:'route', publishing:'activity',
+  identity_delivery:'server', complaint_rate:'alert', bounce_rate:'alert'};
 
 /* ------------------------------------------------------------------ tooltip */
 const tipEl = () => document.getElementById('tip');
@@ -702,7 +733,7 @@ function makeTable({columns, rows, search=true, height=null, filters=[], csv=nul
   const thead = el('thead'), trh = el('tr');
   for (const c of columns) {
     const th = el('th', {class:'sortable' + (/\bnum\b/.test(c.cls||'') ? ' num' : '')});
-    const btn = el('button', {type:'button', class:'thbtn', 'aria-label':`Sort by ${c.title}`, html:`${esc(c.title)} <span class="arrow"></span>`});
+    const btn = el('button', {type:'button', class:'thbtn', 'aria-label':`Sort by ${c.title}`, html:`${esc(c.title)}<span class="arrow"></span>`});
     if (c.hint) btn.title = c.hint;
     btn.addEventListener('click', ()=>{ if(sortKey===c.key) sortDir*=-1; else {sortKey=c.key; sortDir=1;} draw(); });
     th.append(btn);
@@ -889,27 +920,55 @@ function attentionItems() {
     items.push({sev:'high', ic:'alert', t:`Rolling complaint rate ${fmtPct(met.latest_rate.rate)} is over the AWS review line`, d:`AWS reviews accounts above ${fmtPct(review,2)}. Pause the riskiest sends and check recent list sources.`});
   else if (met.peak_rate?.rate >= alert)
     items.push({sev:'medium', ic:'activity', t:`Peak rate ${fmtPct(met.peak_rate.rate)} crossed the internal alert line`, d:`On ${fmtDate(met.peak_rate.date)} — ${Math.round(met.peak_rate.rate/review*100)}% of the AWS review line. The current rate is ${fmtPct(met.latest_rate?.rate)}.`});
-  for (const g of coverageRows().filter(c=>!c.routes).sort((a,b)=>(a.risk==='high'?0:1)-(b.risk==='high'?0:1)))
+  const findings = m.advisor?.findings || [];
+  const byKind = new Map();
+  for (const f of findings) { const k = `${f.kind}|${f.severity}`; byKind.set(k, [...(byKind.get(k) || []), f]); }
+  for (const group of byKind.values()) {
+    const f = group[0];
+    if (group.length < 3) {
+      for (const g of group) items.push({sev:g.severity, ic:KIND_ICON[g.kind]||'alert', t:g.title, d:g.detail, fix:registerBrief(g.id, g.resource, g.brief)});
+      continue;
+    }
+    const names = group.map(g => String(g.resource).replace(/`/g, "'").replace(/\s+/g, ' '));
+    const list = names.length > 4 ? `${names.slice(0, 3).join(', ')} and ${names.length - 3} more` : names.join(', ');
+    const label = {dkim:'DKIM is not passing', mail_from:'No custom MAIL FROM', spf:'SPF misses amazonses.com', dmarc:'DMARC needs work',
+      routing:'Config sets do not route BOUNCE/COMPLAINT', publishing:'Config sets do not publish Delivery/Open/Click',
+      identity_delivery:'Identities without Delivery notifications', complaint_rate:'Complaint rate over the line', bounce_rate:'Bounce rate over the line'}[f.kind] || f.title;
+
+    const noun = {dkim:['identity','identities'], mail_from:['identity','identities'], identity_delivery:['identity','identities'],
+      spf:['domain','domains'], dmarc:['domain','domains'], routing:['config set','config sets'], publishing:['config set','config sets']}[f.kind] || ['row','rows'];
+    items.push({sev:f.severity, ic:KIND_ICON[f.kind]||'alert', t:`${label} for ${plural(group.length, noun[0], noun[1])}`,
+      d:`${list}. ${f.detail}`, fix:(() => {
+        const title = `${label} for ${plural(group.length, noun[0], noun[1])}`;
+        const md = `# Fix: ${title}\n\nThis brief covers ${group.length} ${noun[1]}: ${names.join(', ')}. Apply each section below.\n\n---\n\n`
+          + group.map(g => g.brief).join('\n---\n\n');
+        return registerBrief(`group:${f.kind}:${f.severity}`, `${group.length} ${noun[1]}`, md);
+      })()});
+  }
+  const advised = new Set(findings.filter(f=>f.kind==='routing').map(f=>f.resource));
+  for (const g of coverageRows().filter(c=>!c.routes && !advised.has(c.name)).sort((a,b)=>(a.risk==='high'?0:1)-(b.risk==='high'?0:1)))
     items.push({sev:g.risk==='high'?'high':'medium', ic:'route', t:`${g.name} does not route BOUNCE/COMPLAINT events`,
-      d:`Complaints sent through this config set never reach your handler${g.complaints?` (${g.complaints} recorded)`:''}. SES still suppresses the address at account level.`, fix:g.name});
+      d:`Complaints sent through this config set never reach your handler${g.complaints?` (${g.complaints} recorded)`:''}. SES still suppresses the address at account level.`, fix:routingFixId(g.name)});
   const errs = m.errors || [];
   if (errs.length) items.push({sev:'medium', ic:'alert', t:`${plural(errs.length,'collector source')} failed this refresh`, d:errs.map(e=>e.section).join(', ') + ' — see Retention & methodology.'});
-  if ((m.identities?.failed||0) > 0) items.push({sev:'medium', ic:'server', t:`${plural(m.identities.failed,'sending identity','sending identities')} failed verification`, d:'Fix their DNS (DKIM) or remove them, so they cannot be sent from by mistake.'});
+  if ((m.identities?.failed||0) > 0 && !findings.some(f=>f.kind==='dkim')) items.push({sev:'medium', ic:'server', t:`${plural(m.identities.failed,'sending identity','sending identities')} failed verification`, d:'Fix their DNS (DKIM) or remove them, so they cannot be sent from by mistake.'});
   const untagged = unattributedByConfigSet();
   if (untagged > 0) items.push({sev:'info', ic:'layers', t:`${plural(untagged,'complaint')} carry no configuration-set dimension`, d:'These were sent without a config set (or through one that does not publish to CloudWatch), so CloudWatch cannot say which sending path they came from.'});
   if ((m.attribution?.simulator_records||0) > 0) items.push({sev:'info', ic:'flask', t:`${plural(m.attribution.simulator_records,'record')} came from the SES mailbox simulator`, d:'This is synthetic test feedback, not a real subscriber, but it still counts in the account-wide total.'});
-  if (m.posture.vdm === 'DISABLED') items.push({sev:'info', ic:'eye', t:'Virtual Deliverability Manager is off', d:'Turning on VDM gives you complaint visibility per mailbox provider and per identity, whatever the routing.'});
   const rank = {high:0, medium:1, info:2};
   return items.map((it,i)=>({...it, i})).sort((a,b)=>rank[a.sev]-rank[b.sev] || a.i-b.i);
 }
 function renderAttention() {
   const items = attentionItems();
   const urgent = items.filter(i=>i.sev!=='info').length;
-  const body = items.length ? items.map(i=>`<div class="attn-item sev-${i.sev}">
+  const one = i => `<div class="attn-item sev-${i.sev}">
       <span class="ai">${icon(i.ic)}</span>
       <div style="min-width:0"><div class="at">${esc(i.t)}</div><div class="ad">${esc(i.d)}</div></div>
       ${i.fix?fixButton(i.fix):`<span class="tag ${i.sev==='high'?'bad':i.sev==='medium'?'warn':'info'}">${i.sev==='high'?'act now':i.sev==='medium'?'review':'note'}</span>`}
-    </div>`).join('') : `<div class="box allclear">${icon('check')} Nothing needs attention. Routing, enforcement and rates are all within bounds.</div>`;
+    </div>`;
+  const SHOW = 8, head = items.slice(0, SHOW), rest = items.slice(SHOW);
+  const body = items.length ? head.map(one).join('') + (rest.length ? `<details class="more attn-more"><summary>Show ${rest.length} more</summary><div class="attn" style="margin-top:8px">${rest.map(one).join('')}</div></details>` : '')
+    : `<div class="box allclear">${icon('check')} Nothing needs attention. Routing, enforcement and rates are all within bounds.</div>`;
   return `<section class="reveal" style="--i:1;margin-top:34px" aria-labelledby="attn-h">
     <div style="display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap">
       <h3 id="attn-h" style="margin:0;font-size:15px;color:var(--ink)">Needs attention ${urgent?`<span class="tag warn">${urgent} to review</span>`:''}</h3>
@@ -1207,6 +1266,76 @@ function renderAttribution() {
   </div>`;
 }
 
+/* ------------------------------------------------------------------ mailbox providers (VDM-equivalent, VDM off) */
+const RANGE_LABEL = {'30':'last 30 days','90':'last 90 days','180':'last 180 days','365':'last 365 days','all':'all ledger history'};
+function rateCell(v, line) {
+  if (v == null) return '<span class="muted">—</span>';
+  const lvl = line && v >= line.review ? 'bad' : line && v >= line.alert ? 'warn' : '';
+  const note = lvl === 'bad' ? ' over the review line' : lvl === 'warn' ? ' over the alert line' : '';
+  return `<span class="${lvl}"${note ? ` title="${note.trim()}"` : ''}>${lvl ? '▲ ' : ''}${(v*100).toFixed(line ? 3 : 1)}%${note ? `<span class="sr">${note}</span>` : ''}</span>`;
+}
+function breakdownColumns(nameTitle) {
+  const cl = {alert:0.0008, review:0.001}, bl = {alert:0.05, review:0.10};
+  const rateOr = (r, key, line) => r.rate_note ? `<span class="muted">${esc(r.rate_note)}</span>` : rateCell(r[key], line);
+  return [
+    {key:'name', title:nameTitle, cls:'mono'},
+    {key:'deliveries', title:'Deliveries', type:'num', cls:'num', render:r=>fmtInt(r.deliveries)},
+    {key:'complaints', title:'Complaints', type:'num', cls:'num', render:r=>fmtInt(r.complaints)},
+    {key:'complaint_rate', title:'Complaint rate', type:'num', cls:'num', render:r=>rateOr(r,'complaint_rate',cl), sortValue:r=>r.complaint_rate ?? -1},
+    {key:'bounces', title:'Bounces', type:'num', cls:'num', render:r=>fmtInt(r.bounces)},
+    {key:'bounce_rate', title:'Bounce rate', type:'num', cls:'num', render:r=>rateOr(r,'bounce_rate',bl), sortValue:r=>r.bounce_rate ?? -1},
+    {key:'open_rate', title:'Open rate', type:'num', cls:'num', render:r=>r.rate_note?'<span class="muted">—</span>':rateCell(r.open_rate), sortValue:r=>r.open_rate ?? -1},
+    {key:'click_rate', title:'Click rate', type:'num', cls:'num', render:r=>r.rate_note?'<span class="muted">—</span>':rateCell(r.click_rate), sortValue:r=>r.click_rate ?? -1},
+  ];
+}
+function publishingFixes() {
+  return (state.model.advisor?.findings || []).filter(f => f.kind === 'publishing' || f.kind === 'identity_delivery');
+}
+function mountProviders() {
+  const host = document.getElementById('providersSection'); if (!host) return;
+  const b = state.model.breakdowns;
+  if (!b) { host.innerHTML = '<div class="box muted">Provider breakdowns appear after the next refresh.</div>'; return; }
+  if (b.state === 'unavailable') { host.innerHTML = `<div class="box errbox">${icon('alert')} Provider breakdowns could not be computed this refresh. See the collector warnings under Retention &amp; methodology.</div>`; return; }
+  const w = b.ranges?.[state.range] || b.ranges?.all || {};
+  const floor = fmtInt(b.floor || 1000);
+  if (w.state === 'ledger_not_configured') {
+    host.innerHTML = `<div class="box note"><h3 style="margin-top:0">Ledger not configured</h3>
+      <p class="sub" style="margin-bottom:0">Per-provider rates come from the self-owned feedback ledger. Deploy it with <code>infra/deploy_ledger.sh</code> and set <code>SESREPORT_LEDGER_TABLE</code>; see <a href="https://github.com/ryabinski-labs/ses-complaint-report#own-your-complaint-state-ledger">Own your complaint state (ledger)</a> in the README.</p></div>`;
+    return;
+  }
+  const fixes = publishingFixes();
+  const noData = w.state === 'no_delivery_data' ? `<div class="box note"><h3 style="margin-top:0">${icon('info')} No delivery data yet</h3>
+      <p class="sub">Complaints and bounces are counted, but SES is not yet publishing Delivery events to the ledger, so no rate can be computed. Copy a fix brief to turn publishing on:</p>
+      <div class="controls">${fixes.slice(0, 6).map(f => fixButton(registerBrief(f.id, f.resource, f.brief), `Fix ${esc(f.resource)}`)).join('') || '<span class="muted">Redeploy the ledger stack, then add DELIVERY to your config-set event destinations.</span>'}</div></div>` : '';
+  const prov = w.providers || [];
+  const total = prov.reduce((a, r) => a + r.deliveries, 0);
+  // two categorical hues (validated pair) for the top two; the rest fold into one grey segment
+  const withD = prov.filter(r => r.deliveries);
+  const segs = withD.slice(0, 2).map((r, i) => ({name:r.name, n:r.deliveries, cls:i ? 'b-s2' : 'b-s1'}));
+  const rest = withD.slice(2);
+  if (rest.length) segs.push({name: rest.length === 1 ? rest[0].name : `All others (${rest.map(r => r.name).join(', ')})`,
+    n: rest.reduce((a, r) => a + r.deliveries, 0), cls:'b-s0'});
+  const pct = n => `${(n/total*100).toFixed(1)}%`;
+  const share = total ? `<div class="hbar" role="img" aria-label="${esc(segs.map(g => `${g.name} ${pct(g.n)}`).join(', '))}">${segs.map(g =>
+      `<span class="${g.cls}" style="flex:${g.n} 1 0" tabindex="0" ${tipAttrs(g.name, fmtInt(g.n)+' deliveries', `${pct(g.n)} of ${fmtInt(total)}`)}></span>`).join('')}</div>
+    <div class="legendrow">${segs.map(g => `<span class="k"><span class="sw ${g.cls}"></span>${esc(g.name)} · <b>${pct(g.n)}</b></span>`).join('')}</div>` : '';
+  host.innerHTML = `${noData}<div class="box">
+      <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;align-items:baseline">
+        <h3 style="margin:0">Share of deliveries · ${esc(RANGE_LABEL[state.range] || state.range)}</h3>
+        <span class="sub">${fmtInt(total)} deliveries counted by the ledger</span></div>
+      ${share || '<p class="sub">No deliveries counted in this range.</p>'}
+    </div>
+    <div id="providerTable"></div>
+    <p class="sub">Source: the self-owned ledger (complaints and permanent bounces over counted deliveries; opens and clicks count each message once). Rates appear once a row has ${floor} deliveries in the range. Opens inflated by Apple Mail Privacy Protection. The hero rate above stays CloudWatch's, which is what AWS enforces.</p>
+    <details class="more"><summary>By sending identity and configuration set</summary>
+      <h3>By sending identity</h3><div id="identityBreakdown"></div>
+      <h3>By configuration set</h3><div id="configSetBreakdown"></div>
+    </details>`;
+  document.getElementById('providerTable').append(makeTable({columns:breakdownColumns('Mailbox provider'), rows:prov, search:false, csv:'mailbox-providers'}));
+  document.getElementById('identityBreakdown').append(makeTable({columns:breakdownColumns('Sending identity'), rows:w.identities||[], csv:'identity-breakdown', height:360}));
+  document.getElementById('configSetBreakdown').append(makeTable({columns:breakdownColumns('Configuration set'), rows:w.config_sets||[], search:false, csv:'config-set-breakdown'}));
+}
+
 /* ------------------------------------------------------------------ records */
 function renderRecords() {
   const rows = state.model.unattributed || [];
@@ -1241,7 +1370,7 @@ function coverageRows() {
 function renderCoverage() {
   const m = state.model, rows = coverageRows();
   const crit = ['BOUNCE','COMPLAINT'];
-  const extra = [...new Set(rows.flatMap(r=>r.types).filter(t=>!crit.includes(t)))].sort();
+  const extra = [...new Set(['DELIVERY','OPEN','CLICK', ...rows.flatMap(r=>r.types)].filter(t=>!crit.includes(t)))].sort();
   const cols = [...crit, ...extra];
   const cell = (has, critical) => has ? `<span class="mx y" title="routed">${icon('tick')}<span class="sr">routed</span></span>`
     : critical ? `<span class="mx n" title="not routed">${icon('cross')}<span class="sr">not routed</span></span>`
@@ -1251,7 +1380,7 @@ function renderCoverage() {
     <thead><tr><th>Configuration set</th>${cols.map(c=>`<th class="${crit.includes(c)?'crit':''}">${esc(c)}</th>`).join('')}<th>Sends</th><th>Complaints</th><th>Risk</th><th><span class="sr">Fix</span></th></tr></thead>
     <tbody>${rows.map(r=>`<tr><td class="mono">${esc(r.name)}</td>${cols.map(c=>`<td data-label="${esc(c)}">${cell(r.types.includes(c), crit.includes(c))}</td>`).join('')}
       <td class="num" data-label="Sends">${r.sends==null?'<span class="muted">—</span>':fmtInt(r.sends)}</td><td class="num" data-label="Complaints">${r.complaints==null?'—':fmtInt(r.complaints)}</td>
-      <td>${risk(r)}</td><td class="fixcell">${r.routes?'':fixButton(r.name,'Fix')}</td></tr>`).join('')}</tbody></table></div>`;
+      <td>${risk(r)}</td><td class="fixcell">${r.routes?'':fixButton(routingFixId(r.name),'Fix')}</td></tr>`).join('')}</tbody></table></div>`;
 
   // pipeline: send → event destinations → SNS → handler → stores
   const fwd = m.config_sets.filter(c=>c.forwards_feedback).length;
@@ -1301,13 +1430,35 @@ function renderInfra() {
     ['Pricing plan', esc(p.pricing_plan||'NONE')],
   ];
   return `<dl class="dl">${dl.map(([k,v])=>`<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>
-    <p class="sub">Live from <code>sesv2:GetAccount</code> at ${fmtTs(m.meta.generated_at)}.</p>
+    <p class="sub">Live from <code>ses:GetAccount</code> at ${fmtTs(m.meta.generated_at)}.</p>
+    ${renderAuthGrid()}
     <div class="box">
       <h3>Sending identities in ${esc(m.meta.region)}</h3>
       <p class="sub" style="margin-top:0">${fmtInt(id.verified)} verified and sending · ${fmtInt(id.failed)} failed · ${fmtInt(id.pending)} pending.${other?` Other regions: ${other}.`:''}</p>
       ${idBar}
       <div id="idTable"></div>
     </div>`;
+}
+
+function renderAuthGrid() {
+  const checks = state.model.advisor?.checks || {};
+  const doms = Object.keys(checks).sort();
+  if (!doms.length) return '';
+  const cell = (v, label) => {
+    const ok = v === 'pass';
+    const dns = String(v||'').startsWith('not checked');
+    const cls = ok ? 'y' : dns ? 'o' : 'n';
+    const ic = ok ? 'tick' : dns ? 'minus' : 'cross';
+    return `<td data-label="${label}"><span class="mx ${cls}" title="${esc(v)}">${icon(ic)}<span class="sr">${esc(v)}</span></span>${ok?'':` <span class="cell-sub" style="display:inline">${esc(v)}</span>`}</td>`;
+  };
+  const failing = doms.filter(d => ['dkim','spf','dmarc'].some(k => checks[d][k] && checks[d][k] !== 'pass'));
+  const row = d => `<tr><td class="mono">${esc(d)}</td>${cell(checks[d].dkim,'DKIM')}${cell(checks[d].spf,'SPF')}${cell(checks[d].dmarc,'DMARC')}<td data-label="MAIL FROM" class="mono">${esc(checks[d].mail_from||'—')}</td></tr>`;
+  return `<div class="box"><h3 style="margin-top:0">Authentication · ${plural(doms.length,'sending domain')}</h3>
+    <p class="sub" style="margin-top:0">DKIM from SES; SPF (custom MAIL FROM) and DMARC from public DNS. ${failing.length ? `${plural(failing.length,'domain')} need attention.` : 'All domains pass.'}</p>
+    <details class="more" ${failing.length && failing.length <= 8 ? 'open' : ''}><summary>Show the authentication grid</summary>
+    <div class="matrixwrap" style="margin-top:10px"><table class="matrix auth">
+      <thead><tr><th>Domain</th><th>DKIM</th><th>SPF</th><th>DMARC</th><th>MAIL FROM</th></tr></thead>
+      <tbody>${[...failing, ...doms.filter(d=>!failing.includes(d))].map(row).join('')}</tbody></table></div></details></div>`;
 }
 
 /* ------------------------------------------------------------------ retention */
@@ -1388,7 +1539,7 @@ function renderMethodology() {
     <div class="tablewrap" style="max-height:none;margin-top:10px"><table>
       <thead><tr><th>Source</th><th>What it provides</th><th>Coverage</th></tr></thead><tbody>
       <tr><td>CloudWatch <code>AWS/SES</code> (${esc(state.model.meta.region)})</td><td>Complaint/Send/Bounce counts, per-config-set counts, <code>Reputation.ComplaintRate</code></td><td>${met.window.days} days (${met.window.retention_start} → ${met.window.retention_end})</td></tr>
-      <tr><td>SES v2 API</td><td>Enforcement, suppression list, quota, identities, config sets, event destinations</td><td>point-in-time</td></tr>
+      <tr><td>SES v2 API</td><td>Enforcement, suppression list, quota, identities (DKIM, MAIL FROM), config sets, event destinations</td><td>point-in-time</td></tr>
       <tr><td>SNS + SQS</td><td>Feedback topic topology, subscribers, DLQ state</td><td>point-in-time</td></tr>
       <tr><td>DynamoDB application stores</td><td>Individual complainant addresses and diagnostics</td><td>as retained by each app</td></tr>
       <tr><td>CloudWatch Logs Insights</td><td>structured <code>event=feedback_unattributed</code> events</td><td>7-day retention only</td></tr>
@@ -1413,10 +1564,11 @@ function render() {
     renderHero() + renderAttention() + renderDelta() +
     `<section class="reveal" style="--i:3">${sechead('trend','01 · Volume','Complaint trend','The rolling rate against AWS’s line, and the days complaints actually landed, on one time axis.')}<div id="trendSection"></div></section>` +
     `<section>${sechead('attribution','02 · Attribution','Where the complaints came from','Compares the account-wide CloudWatch count with the recipient records each store kept, and separates real complainants from simulator tests.')}${renderAttribution()}</section>` +
-    `<section>${sechead('records','03 · Records','Who complained')}${renderRecords()}</section>` +
-    `<section>${sechead('coverage','04 · Pipeline',`Feedback routing &amp; suppression coverage`, 'Send paths with no COMPLAINT/BOUNCE destination never notify your handler, so complaints there go unseen by ops. Ranked by exposure.', gaps?`<span class="tag warn">${icon('alert')}${plural(gaps,'gap')}</span>`:`<span class="tag ok">${icon('check')}fully routed</span>`)}${renderCoverage()}</section>` +
-    `<section>${sechead('infra','05 · Account','Posture &amp; infrastructure')}${renderInfra()}</section>` +
-    `<section>${sechead('retention','06 · Retention','When complaints expire','The answer depends on which record you mean.')}${renderRetention()}${renderMethodology()}</section>`;
+    `<section>${sechead('providers','03 · Providers','Mailbox providers', 'Complaint, bounce and engagement rates per mailbox provider, identity and config set, computed from your own ledger. VDM stays off and costs nothing.')}<div id="providersSection"></div></section>` +
+    `<section>${sechead('records','04 · Records','Who complained')}${renderRecords()}</section>` +
+    `<section>${sechead('coverage','05 · Pipeline',`Feedback routing &amp; suppression coverage`, 'Send paths with no COMPLAINT/BOUNCE destination never notify your handler, so complaints there go unseen by ops. Ranked by exposure.', gaps?`<span class="tag warn">${icon('alert')}${plural(gaps,'gap')}</span>`:`<span class="tag ok">${icon('check')}fully routed</span>`)}${renderCoverage()}</section>` +
+    `<section>${sechead('infra','06 · Account','Posture &amp; infrastructure')}${renderInfra()}</section>` +
+    `<section>${sechead('retention','07 · Retention','When complaints expire','The answer depends on which record you mean.')}${renderRetention()}${renderMethodology()}</section>`;
 
   // nav badge for open items
   const nav = document.querySelector('#secnav a[href="#overview"]');
@@ -1424,6 +1576,7 @@ function render() {
   nav.innerHTML = `Overview${urgent?`<span class="alertcount" aria-label="${urgent} items to review">${urgent}</span>`:''}`;
 
   mountTrend();
+  mountProviders();
   drawExpiry();
   // mount deferred interactive tables (search/sort) after HTML is in place
   const records = state.model.complaint_records || [];
@@ -1535,6 +1688,13 @@ function observeSections() {
   }, {rootMargin:'-30% 0px -60% 0px'});
   for (const a of links) { const t = document.querySelector(a.getAttribute('href')); if (t) secObserver.observe(t); }
 }
+// keep jump targets below the sticky nav, which wraps to 2-3 rows on phones
+(() => {
+  const nav = document.getElementById('secnav');
+  const set = () => document.documentElement.style.setProperty('--navh', nav.offsetHeight + 'px');
+  set();
+  if (window.ResizeObserver) new ResizeObserver(set).observe(nav);
+})();
 window.addEventListener('scroll', () => {
   const nav = document.getElementById('secnav');
   nav.classList.toggle('stuck', nav.getBoundingClientRect().top <= 0 && window.scrollY > 40);
@@ -1566,7 +1726,7 @@ function toggleTheme() {
 }
 
 /* ------------------------------------------------------------------ actions */
-function setRange(v){ state.range=v; mountTrend(); document.querySelector(`[data-range="${v}"]`)?.focus(); }
+function setRange(v){ state.range=v; mountTrend(); mountProviders(); document.querySelector(`[data-range="${v}"]`)?.focus(); }
 function setSource(v){ state.source=v; mountTrend(); document.querySelector(`[data-source="${CSS.escape(v)}"]`)?.focus(); }
 
 async function doRefresh() {
