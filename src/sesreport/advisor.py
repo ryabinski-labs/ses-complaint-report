@@ -24,6 +24,7 @@ import time
 from collections.abc import Iterable
 
 from . import fixbriefs
+from .breakdowns import counts_toward_deliverability
 
 COMPLAINT_LINES = ((0.0010, "high"), (0.0008, "medium"))
 BOUNCE_LINES = ((0.10, "high"), (0.05, "medium"))
@@ -630,11 +631,18 @@ def sns_findings(sns_topics: list[dict], config_sets: list[dict], identity_feedb
 
 
 def identity_activity(ledger_rows: list[dict], aggregates: list[dict]) -> dict[str, dict]:
-    """Per sending identity: how many bounce/complaint rows and delivery counts the ledger holds."""
+    """Per sending identity: how many real bounce/complaint rows and delivery
+    counts the ledger holds.
+
+    ``OnAccountSuppressionList`` and simulator rows are deliberately excluded:
+    they are not deliverability failures and AWS does not count them toward the
+    bounce rate. Counting them made a suppressed Google Play review address
+    look like a 27-bounce identity with no denominator.
+    """
     out: dict[str, dict] = {}
     for r in ledger_rows:
         ident = r.get("sending_identity") or ""
-        if ident and not r.get("simulator"):
+        if ident and counts_toward_deliverability(r):
             out.setdefault(ident, {"feedback": 0, "deliveries": 0})["feedback"] += 1
     for a in aggregates:
         if a.get("event") == "DELIVERY" and a.get("identity"):

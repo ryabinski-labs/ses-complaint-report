@@ -27,6 +27,21 @@ NO_DELIVERIES = "no delivery data yet"
 EVENT_FIELD = {"DELIVERY": "deliveries", "OPEN_UNIQUE": "opens", "CLICK_UNIQUE": "clicks"}
 
 
+def counts_toward_deliverability(row: dict) -> bool:
+    """True when a ledger bounce/complaint row is real deliverability signal.
+
+    ``OnAccountSuppressionList`` bounces are SES refusing to send to an address
+    already on the account suppression list. AWS does not count them toward the
+    bounce rate (see the SES bounce-type table), and in practice they are test
+    or backfill traffic. Counting them inflates both the provider rates and the
+    Advisor's severity. Mailbox-simulator rows are synthetic for the same
+    reason.
+    """
+    if row.get("simulator"):
+        return False
+    return "OnAccountSuppressionList" not in (row.get("feedback_type") or "")
+
+
 def _row(name: str) -> dict:
     return {"name": name, "deliveries": 0, "complaints": 0, "bounces": 0, "opens": 0, "clicks": 0}
 
@@ -94,7 +109,7 @@ def build_breakdowns(
         day = (r.get("day") or r.get("last_seen") or "")[:10]
         if eff and day < eff:
             continue
-        if r.get("simulator"):
+        if not counts_toward_deliverability(r):
             continue
         field = {"COMPLAINT": "complaints", "BOUNCE": "bounces"}.get((r.get("event_type") or "").upper())
         if field:
