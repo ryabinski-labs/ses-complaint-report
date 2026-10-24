@@ -12,6 +12,7 @@ from AWS data is shell-quoted. The dashboard never runs these commands itself.
 from __future__ import annotations
 
 import json
+import re
 import shlex
 
 SECTIONS = ("Problem", "Affected resource", "Why it matters", "Steps", "Commands", "Verify", "Rollback")
@@ -331,25 +332,82 @@ def account_rate_brief(metric: str, rate: float, line: float) -> str:
     )
 
 
+def _default_set_name(identity: str) -> str:
+    """A valid SES configuration-set name derived from an identity."""
+    name = re.sub(r"[^A-Za-z0-9_-]", "-", identity).strip("-")[:48]
+    return f"{name or 'identity'}-default"
+
+
 def identity_delivery_brief(identity: str, topic: str, region: str = "", others: list[str] | None = None) -> str:
     identity_md = _n(identity)
-    steps = ["Point the identity's Delivery notifications at the same topic as its Complaint notifications."]
+    default_set = _default_set_name(identity)
+    region_flag = _region_flag(region)
+    steps = [
+        "Prefer adding `DELIVERY` to the event destination of the configuration set this identity's mail "
+        "already uses. That keeps the `ses:configuration-set` tag, so the ledger can attribute the delivery.",
+        f"If this identity's mail does not use a set, create a default feedback set (`{default_set}`) matching "
+        "`BOUNCE`, `COMPLAINT` and `DELIVERY` — never `OPEN` or `CLICK` — attach it to the ledger's feedback "
+        "topic, and assign it as the identity's default. That covers sends which omit a set without enabling "
+        "link rewriting.",
+        "Use the identity notification topic only as a fallback. Identity feedback does not publish the "
+        "`ses:configuration-set` tag, so those deliveries are counted under `(none)` and the per-config-set "
+        "rate stays empty.",
+    ]
     if others:
-        steps.insert(0, f"The topic's other subscribers ({', '.join(_n(o) for o in others)}) will receive a Delivery "
-                        "notification per message too. If they cannot take that volume, create a dedicated topic "
-                        "subscribed only by the ledger and use it below.")
+        steps.append(f"The identity topic's other subscribers ({', '.join(_n(o) for o in others)}) would receive "
+                     "a Delivery notification per message too. If they cannot take that volume, create a dedicated "
+                     "topic subscribed only by the ledger and use it for the default feedback set instead.")
+    dest = json.dumps({"Enabled": True, "MatchingEventTypes": ["BOUNCE", "COMPLAINT", "DELIVERY"],
+                       "SnsDestination": {"TopicArn": topic}}, separators=(",", ":"))
     return brief(
         f"publish Delivery notifications for {identity_md}",
         problem=f"Identity `{identity_md}` sends Bounce and Complaint notifications to SNS but not Delivery notifications.",
         resource=f"SES identity {identity_md}", region=region,
         why="Sends made without a configuration set are only visible to the ledger through identity notifications. "
-            "Without Delivery notifications their bounces and complaints have no denominator.",
+            "Without a Delivery denominator their bounces and complaints cannot be turned into rates. Prefer a "
+            "configuration set: identity feedback does not publish the `ses:configuration-set` tag, so identity-level "
+            "deliveries are attributed to `(none)`.",
         steps=steps,
-        commands=["aws ses set-identity-notification-topic" + _region_flag(region) + " \\",
-                  f"  --identity {q(identity)} \\", "  --notification-type Delivery \\", f"  --sns-topic {q(topic)}"],
-        verify=[f"`aws ses get-identity-notification-attributes --identities {q(identity)}` shows a DeliveryTopic."],
-        rollback=[f"`aws ses set-identity-notification-topic --identity {q(identity)} --notification-type Delivery` "
-                  "(no --sns-topic) removes it."],
+        commands=[
+            "# Preferred: add DELIVERY to the set this identity's mail already uses.",
+            "# Inspect the existing destination, then add DELIVERY without removing its other types:",
+            "aws sesv2 get-configuration-set-event-destinations" + region_flag + " \\",
+            "  --configuration-set-name SET_NAME",
+            "",
+            "# If the identity has no set, create a default feedback set (no OPEN/CLICK):",
+            f"aws sesv2 create-configuration-set{region_flag} \\",
+            f"  --configuration-set-name {q(default_set)}",
+            f"aws sesv2 create-configuration-set-event-destination{region_flag} \\",
+            f"  --configuration-set-name {q(default_set)} \\",
+            "  --event-destination-name feedback-to-ledger \\",
+            f"  --event-destination {q(dest)}",
+            f"aws sesv2 put-email-identity-configuration-set-attributes{region_flag} \\",
+            f"  --email-identity {q(identity)} \\",
+            f"  --configuration-set-name {q(default_set)}",
+            "",
+            "# Fallback only: identity Delivery has no config-set attribution.",
+            f"aws ses set-identity-notification-topic{region_flag} \\",
+            f"  --identity {q(identity)} \\",
+            "  --notification-type Delivery \\",
+            f"  --sns-topic {q(topic)}",
+        ],
+        verify=[
+            f"`aws sesv2 get-email-identity --email-identity {q(identity)}{region_flag} --query 'ConfigurationSetName'` "
+            f"shows `{default_set}` after the default-set path.",
+            f"`aws sesv2 get-configuration-set-event-destinations --configuration-set-name {q(default_set)}{region_flag}` "
+            "shows a `DELIVERY` destination on the ledger topic.",
+            f"`aws ses get-identity-notification-attributes --identities {q(identity)}` shows a `DeliveryTopic` only "
+            "if you used the fallback.",
+        ],
+        rollback=[
+            f"`aws sesv2 put-email-identity-configuration-set-attributes --email-identity {q(identity)}{region_flag}` "
+            "removes the default-set association.",
+            f"`aws sesv2 delete-configuration-set-event-destination --configuration-set-name {q(default_set)} "
+            f"--event-destination-name feedback-to-ledger{region_flag}` removes the destination; then delete the set "
+            "if you created it.",
+            f"`aws ses set-identity-notification-topic --identity {q(identity)} --notification-type Delivery{region_flag}` "
+            "removes the identity fallback.",
+        ],
     )
 
 
