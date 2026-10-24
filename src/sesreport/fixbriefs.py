@@ -343,15 +343,15 @@ def identity_delivery_brief(identity: str, topic: str, region: str = "", others:
     default_set = _default_set_name(identity)
     region_flag = _region_flag(region)
     steps = [
-        "Prefer adding `DELIVERY` to the event destination of the configuration set this identity's mail "
-        "already uses. That keeps the `ses:configuration-set` tag, so the ledger can attribute the delivery.",
-        f"If this identity's mail does not use a set, create a default feedback set (`{default_set}`) matching "
-        "`BOUNCE`, `COMPLAINT` and `DELIVERY` — never `OPEN` or `CLICK` — attach it to the ledger's feedback "
-        "topic, and assign it as the identity's default. That covers sends which omit a set without enabling "
-        "link rewriting.",
-        "Use the identity notification topic only as a fallback. Identity feedback does not publish the "
-        "`ses:configuration-set` tag, so those deliveries are counted under `(none)` and the per-config-set "
-        "rate stays empty.",
+        ("Prefer adding `DELIVERY` to the event destination of the configuration set this identity's mail "
+         "already uses. That keeps the `ses:configuration-set` tag, so the ledger can attribute the delivery."),
+        (f"If this identity's mail does not use a set, create a default feedback set (`{default_set}`) matching "
+         "`BOUNCE`, `COMPLAINT` and `DELIVERY` — never `OPEN` or `CLICK` — attach it to the ledger's feedback "
+         "topic, and assign it as the identity's default. That covers sends which omit a set without enabling "
+         "link rewriting."),
+        ("Use the identity notification topic only as a fallback. Identity feedback does not publish the "
+         "`ses:configuration-set` tag, so those deliveries are counted under `(none)` and the per-config-set "
+         "rate stays empty."),
     ]
     if others:
         steps.append(f"The identity topic's other subscribers ({', '.join(_n(o) for o in others)}) would receive "

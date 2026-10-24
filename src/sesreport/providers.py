@@ -106,7 +106,7 @@ class Classifier:
         try:
             write_private(self.cache_path, json.dumps(self._cache, sort_keys=True))
         except OSError:
-            pass
+            pass  # the cache is an optimization; a read-only disk must not fail the run
 
 
 def write_private(path: Path, text: str) -> None:
