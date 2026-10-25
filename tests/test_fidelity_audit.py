@@ -287,14 +287,15 @@ def test_identity_delivery_is_skipped_when_the_default_set_publishes_delivery_an
 def test_unattributed_sends_share_is_computed_and_graded():
     cov = [_cov("a", sends_recent=7000, routes_feedback=True), _cov("b", sends_recent=694, routes_feedback=True)]
     metrics = {"sends_by_day": [{"date": (NOW.date() - dt.timedelta(days=i)).isoformat(), "count": 1000} for i in range(20)]}
-    u = collect.unattributed_sends(metrics, cov)
+    u = collect.unattributed_sends(metrics, cov, today=NOW.date())
     assert (u["account_sends"], u["config_set_sends"], u["unattributed"]) == (14000, 7694, 6306)
     ids = [_ident("seo.example"), _ident("x.example", default_config_set="a"), _ident("dead.example", verified=False)]
     (f,) = advisor.unattributed_findings(u, ids, [], cov)
     words = {w.strip(".,:") for w in f["detail"].split()}  # identities the detail lists, as whole words
     assert f["severity"] == "medium" and [i["name"] for i in ids if i["name"] in words] == ["seo.example"]
     assert advisor.unattributed_findings({**u, "unattributed": 0, "share": 0.0}, ids, [], cov) == []
-    unknown = collect.unattributed_sends(metrics, cov + [_cov("c", sends=None, sends_recent=None, usage="unknown")])
+    unknown = collect.unattributed_sends(metrics, cov + [_cov("c", sends=None, sends_recent=None, usage="unknown")],
+                                         today=NOW.date())
     assert unknown["unattributed"] is None and unknown["unknown_sets"] == ["c"]
     (g,) = advisor.unattributed_findings(unknown, ids, [], cov)
     assert g["severity"] == "info" and "usage is unknown for c" in g["detail"]
