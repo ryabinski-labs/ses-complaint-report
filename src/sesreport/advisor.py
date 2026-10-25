@@ -453,7 +453,20 @@ def threshold_findings(window: dict, floor: int = 1000) -> list[dict]:
 # Routing and publishing
 # --------------------------------------------------------------------------- #
 def _ledger_topics(sns_topics: list[dict]) -> list[str]:
-    return [t["arn"] for t in sns_topics if t.get("ledger_subscribed")]
+    """Ledger-subscribed topic ARNs, safest first.
+
+    A generated brief points at the first entry, so prefer a topic that already
+    has a feedback consumer and no email subscribers. Publishing raw SES bounce
+    or complaint payloads to an email-only ops topic would mail recipient
+    addresses to its subscribers.
+    """
+    def rank(topic: dict) -> tuple:
+        subs = topic.get("subscribers") or []
+        has_email = any(s.get("protocol") == "email" for s in subs)
+        has_consumer = bool(topic.get("consumers"))
+        return (has_email, not has_consumer, topic.get("name") or topic["arn"])
+
+    return [t["arn"] for t in sorted((t for t in sns_topics if t.get("ledger_subscribed")), key=rank)]
 
 
 def _idle_sev(usage: str, default: str) -> str:

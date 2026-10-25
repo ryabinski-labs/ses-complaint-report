@@ -1406,14 +1406,16 @@ def collect_all(cache_dir: Path | None = None, resolver=None) -> dict:
     return model
 
 
-def unattributed_sends(metrics: dict, coverage: list[dict], days: int = RECENT_DAYS) -> dict:
+def unattributed_sends(metrics: dict, coverage: list[dict], days: int = RECENT_DAYS,
+                       today: dt.date | None = None) -> dict:
     """Account sends in the last ``days`` that no configuration set accounts for.
 
     Those messages carry no event destination, so their bounces and complaints
     arrive only as forwarded email (if at all). ``None`` values mean the share
     cannot be computed because some active set's usage is unknown.
     """
-    cutoff = (dt.datetime.now(dt.timezone.utc).date() - dt.timedelta(days=days - 1)).isoformat()
+    today = today or dt.datetime.now(dt.timezone.utc).date()
+    cutoff = (today - dt.timedelta(days=days - 1)).isoformat()
     account = sum(int(r.get("count") or 0) for r in metrics.get("sends_by_day") or [] if r.get("date", "") >= cutoff)
     known = [c for c in coverage if c.get("sends_recent") is not None]
     unknown = [c["config_set"] for c in coverage if c.get("sends_recent") is None and c.get("sending_enabled", True)]

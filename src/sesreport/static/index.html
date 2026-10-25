@@ -280,6 +280,7 @@ details.more[open] > summary::before { transform:rotate(90deg); }
 .mx.y { color:var(--ok); background:color-mix(in srgb, var(--ok) 13%, transparent); }
 .mx.n { color:var(--redtx); background:color-mix(in srgb, var(--red) 13%, transparent); }
 .mx.o { color:var(--mut); }
+.mx.c { color:var(--ok); background:transparent; box-shadow:inset 0 0 0 1.5px color-mix(in srgb, var(--ok) 45%, transparent); }
 .mx .ic { width:14px; height:14px; vertical-align:0; }
 .sr { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0 0 0 0); white-space:nowrap; }
 .matrixwrap { position:relative; border:1px solid var(--line); border-radius:12px; background:var(--card); }
@@ -581,7 +582,9 @@ function toCsv(rows, columns) {
 }
 function buildMarkdown() {
   const m = state.model, met = m.metrics, p = m.posture, sl = m.suppression_list || {};
-  const gaps = (m.suppression_coverage||[]).filter(c=>!c.routes_feedback && c.sending_enabled !== false);
+  const openGaps = (m.suppression_coverage||[]).filter(c=>!c.routes_feedback && c.sending_enabled !== false);
+  const gaps = openGaps.filter(c=>!(c.covered_by||[]).length);
+  const covered = openGaps.filter(c=>(c.covered_by||[]).length);
   const L = [];
   L.push(`# SES Complaint Report — account ${m.meta.account}`);
   L.push('');
@@ -597,6 +600,11 @@ function buildMarkdown() {
   L.push('## Suppression gaps (config sets with no BOUNCE/COMPLAINT routing)');
   if (gaps.length) for (const g of gaps) L.push(`- \`${g.config_set}\` — risk ${g.risk}${g.complaints?`, ${g.complaints} complaints`:''}`);
   else L.push('- none');
+  if (covered.length) {
+    L.push('');
+    L.push(`**${plural(covered.length,'set')} covered by identity notifications** (no action needed while only those identities send):`);
+    for (const g of covered) L.push(`- \`${g.config_set}\` — covered by ${g.covered_by.join(', ')}`);
+  }
   L.push('');
   L.push('## Per-config-set complaints');
   for (const c of (m.config_set_complaints||[])) L.push(`- \`${c.config_set}\`: ${c.events}`);
@@ -1392,7 +1400,7 @@ function renderRecords() {
 function coverageRows() {
   const m = state.model, cov = m.suppression_coverage || [], sets = m.config_sets || [];
   const byName = new Map();
-  for (const c of sets) byName.set(c.name, {name:c.name, types:c.event_types||[], routes:!!c.forwards_feedback});
+  for (const c of sets) byName.set(c.name, {name:c.name, types:c.event_types||[], routes:!!c.forwards_feedback, covered:[]});
   for (const c of cov) {
     const r = byName.get(c.config_set) || {name:c.config_set, types:c.event_types||[], routes:!!c.routes_feedback};
     Object.assign(r, {risk:c.risk, sends:c.sends, sendsRecent:c.sends_recent, usage:c.usage, complaints:c.complaints, routes:!!c.routes_feedback,
@@ -1401,7 +1409,10 @@ function coverageRows() {
     byName.set(c.config_set, r);
   }
   const rank = {high:0, medium:1, info:2, ok:3, disabled:4};
-  for (const r of byName.values()) if (!r.risk) r.risk = r.routes ? 'ok' : 'medium';
+  for (const r of byName.values()) {
+    if (!r.covered) r.covered = [];
+    if (!r.risk) r.risk = r.routes ? 'ok' : 'medium';
+  }
   return [...byName.values()].sort((a,b)=>(rank[a.risk]??3)-(rank[b.risk]??3) || a.name.localeCompare(b.name));
 }
 function renderCoverage() {
@@ -1409,7 +1420,8 @@ function renderCoverage() {
   const crit = ['BOUNCE','COMPLAINT'];
   const extra = [...new Set(['DELIVERY','OPEN','CLICK', ...rows.flatMap(r=>r.types)].filter(t=>!crit.includes(t)))].sort();
   const cols = [...crit, ...extra];
-  const cell = (has, critical) => has ? `<span class="mx y" title="routed">${icon('tick')}<span class="sr">routed</span></span>`
+  const cell = (has, critical, r) => has ? `<span class="mx y" title="routed">${icon('tick')}<span class="sr">routed</span></span>`
+    : critical && r.covered.length ? `<span class="mx c" title="covered by identity notifications on ${esc(r.covered.join(', '))}">${icon('shield')}<span class="sr">covered by identity notifications</span></span>`
     : critical ? `<span class="mx n" title="not routed">${icon('cross')}<span class="sr">not routed</span></span>`
     : `<span class="mx o">${icon('minus')}<span class="sr">not routed</span></span>`;
   const risk = r => r.risk==='disabled' ? `<span class="tag" title="sending disabled on this configuration set">off</span>`
@@ -1420,9 +1432,9 @@ function renderCoverage() {
     : `${fmtInt(r.sends)}${r.sendsRecent!=null?`<div class="cell-sub">${r.sendsRecent?fmtInt(r.sendsRecent)+' in 14 d':'idle 14 d'}</div>`:''}`;
   const matrix = `<div class="matrixwrap"><table class="matrix">
     <thead><tr><th>Configuration set</th>${cols.map(c=>`<th class="${crit.includes(c)?'crit':''}">${esc(c)}</th>`).join('')}<th>Sends</th><th>Complaints</th><th>Risk</th><th><span class="sr">Fix</span></th></tr></thead>
-    <tbody>${rows.map(r=>`<tr${r.enabled?'':' class="muted"'}><td class="mono">${esc(r.name)}${r.enabled?'':'<div class="cell-sub">sending disabled</div>'}</td>${cols.map(c=>`<td data-label="${esc(c)}">${cell(r.types.includes(c), crit.includes(c))}</td>`).join('')}
+    <tbody>${rows.map(r=>`<tr${r.enabled?'':' class="muted"'}><td class="mono">${esc(r.name)}${r.enabled?'':'<div class="cell-sub">sending disabled</div>'}</td>${cols.map(c=>`<td data-label="${esc(c)}">${cell(r.types.includes(c), crit.includes(c), r)}</td>`).join('')}
       <td class="num" data-label="Sends">${sendsCell(r)}</td><td class="num" data-label="Complaints">${r.complaints==null?'<span class="muted" title="no CloudWatch COMPLAINT metric for this set">—</span>':fmtInt(r.complaints)}</td>
-      <td>${risk(r)}</td><td class="fixcell">${r.routes||!r.enabled?'':fixButton(routingFixId(r.name),'Fix')}</td></tr>`).join('')}</tbody></table></div>`;
+      <td>${risk(r)}</td><td class="fixcell">${r.routes||!r.enabled||r.covered.length?'':fixButton(routingFixId(r.name),'Fix')}</td></tr>`).join('')}</tbody></table></div>`;
 
   // pipeline: send → event destinations → SNS → handler → stores
   const liveSets = m.config_sets.filter(c=>c.sending_enabled!==false);
@@ -1607,14 +1619,22 @@ function render() {
   const app = document.getElementById('app');
   const cs = state.model.config_set_complaints || [];
   if (state.source !== 'all' && !cs.some(c=>c.config_set===state.source)) state.source = 'all';
-  const gaps = coverageRows().filter(c=>!c.routes && c.enabled !== false).length;
+  const coverage = coverageRows();
+  const openGaps = coverage.filter(c=>!c.routes && c.enabled !== false);
+  const gaps = openGaps.filter(c=>!c.covered.length).length;
+  const covered = openGaps.length - gaps;
+  const gapTags = [
+    gaps ? `<span class="tag warn">${icon('alert')}${plural(gaps,'gap')}</span>` : '',
+    covered ? `<span class="tag info">${icon('shield')}${plural(covered,'set')} covered by identity</span>` : '',
+    !gaps && !covered ? `<span class="tag ok">${icon('check')}fully routed</span>` : '',
+  ].filter(Boolean).join(' ');
   app.innerHTML =
     renderHero() + renderAttention() + renderDelta() +
     `<section class="reveal" style="--i:3">${sechead('trend','01 · Volume','Complaint trend','The rolling rate against AWS’s line, and the days complaints actually landed, on one time axis.')}<div id="trendSection"></div></section>` +
     `<section>${sechead('attribution','02 · Attribution','Where the complaints came from','Compares the account-wide CloudWatch count with the recipient records each store kept, and separates real complainants from simulator tests.')}${renderAttribution()}</section>` +
     `<section>${sechead('providers','03 · Providers','Mailbox providers', 'Complaint, bounce and engagement rates per mailbox provider, identity and config set, computed from your own ledger. VDM stays off and costs nothing.')}<div id="providersSection"></div></section>` +
     `<section>${sechead('records','04 · Records','Who complained')}${renderRecords()}</section>` +
-    `<section>${sechead('coverage','05 · Pipeline',`Feedback routing &amp; suppression coverage`, 'Send paths with no COMPLAINT/BOUNCE destination never notify your handler, so complaints there go unseen by ops. Ranked by exposure.', gaps?`<span class="tag warn">${icon('alert')}${plural(gaps,'gap')}</span>`:`<span class="tag ok">${icon('check')}fully routed</span>`)}${renderCoverage()}</section>` +
+    `<section>${sechead('coverage','05 · Pipeline',`Feedback routing &amp; suppression coverage`, 'Send paths with no COMPLAINT/BOUNCE destination never notify your handler, so complaints there go unseen by ops. Ranked by exposure.', gapTags)}${renderCoverage()}</section>` +
     `<section>${sechead('infra','06 · Account','Posture &amp; infrastructure')}${renderInfra()}</section>` +
     `<section>${sechead('retention','07 · Retention','When complaints expire','The answer depends on which record you mean.')}${renderRetention()}${renderMethodology()}</section>`;
 
