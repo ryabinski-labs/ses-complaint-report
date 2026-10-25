@@ -63,37 +63,89 @@ def _ledger_topic_lines(ledger_topics: list[str] | None) -> tuple[str, list[str]
 def routing_brief(config_set: str, region: str = "", ledger_topics: list[str] | None = None,
                   covered_by: list[str] | None = None, usage: str = "") -> str:
     config_set_md = _n(config_set)
-    topic, topic_lines = _ledger_topic_lines(ledger_topics)
-    dest = json.dumps({"Enabled": True, "MatchingEventTypes": ["BOUNCE", "COMPLAINT", "DELIVERY"],
-                       "SnsDestination": {"TopicArn": topic}}, separators=(",", ":"))
-    why = ("Complaints sent through this path never reach a feedback handler or the ledger, so ops cannot see "
-           "them and the per-provider rates have no numerator. SES still suppresses the address at account level.")
     if covered_by:
-        why = (f"Mail from {', '.join(_n(c) for c in covered_by)} is already covered by identity-level "
-               "notifications, which fire whatever configuration set the message used. The gap only matters if "
-               "another identity sends through this set.")
-    elif usage == "idle":
-        why = "Nothing has used this set in the last 14 days, so this is a latent gap: it becomes real on the first send."
+        topic = "LEDGER_TOPIC_ARN"
+        topic_lines = [
+            "# Optional hardening only. Create a dedicated topic for ledger feedback;",
+            "# do not reuse an ops or alert topic: SES bounce and complaint payloads",
+            "# include recipient addresses, and an email subscriber would receive them raw.",
+            "LEDGER_TOPIC_ARN=$(aws sns create-topic --name ses-complaint-feedback-ledger"
+            + _region_flag(region) + " --query TopicArn --output text)",
+            "LEDGER_ARN=$(aws lambda get-function --function-name ses-complaint-report-ledger-ingest"
+            + _region_flag(region) + " --query Configuration.FunctionArn --output text)",
+            "aws sns subscribe --topic-arn \"$LEDGER_TOPIC_ARN\" --protocol lambda "
+            "--notification-endpoint \"$LEDGER_ARN\"" + _region_flag(region),
+            "# replace LEDGER_TOPIC_ARN below with the ARN created above",
+        ]
+        title = f"optionally route BOUNCE/COMPLAINT events for {config_set_md}"
+        problem = (f"Configuration set `{config_set_md}` has no enabled SNS or Firehose event destination for BOUNCE "
+                   "or COMPLAINT events. The identities that currently send through it already route both through "
+                   "identity-level notifications, so no complaint is currently going unseen.")
+        why = (f"Mail from {', '.join(_n(c) for c in covered_by)} is already covered by identity-level notifications, "
+               "which fire whatever configuration set the message used. This change is optional defense-in-depth: it "
+               "only matters if another identity starts sending through this set. Do not add delivery events here; "
+               "delivery has its own publishing brief.")
+        steps = [
+            "Optional: create a dedicated SNS topic for this path and subscribe the ledger ingest Lambda. Do not "
+            "reuse an ops or alert topic, because an email subscriber would receive raw bounce and complaint "
+            "payloads including recipient addresses.",
+            "Add a BOUNCE/COMPLAINT-only event destination on the set, pointing at the dedicated topic. Do not "
+            "include delivery events; delivery has its own publishing brief.",
+            "If the sending app needs the events too, subscribe its handler to the same dedicated topic rather than "
+            "creating a second path.",
+            f"No action is needed while only {', '.join(_n(c) for c in covered_by)} sends through this set.",
+        ]
+        verify = [
+            f"`aws sesv2 get-configuration-set-event-destinations --configuration-set-name {q(config_set)}` lists "
+            "BOUNCE and COMPLAINT on the dedicated topic.",
+            "The destination does not publish delivery events.",
+            "The ledger dedupes the identity-level copy by SES message ID, so the extra feed does not double-count.",
+        ]
+        rollback = [
+            f"`aws sesv2 delete-configuration-set-event-destination --configuration-set-name {q(config_set)} "
+            "--event-destination-name feedback-to-ledger`",
+            "Unsubscribe the ledger Lambda and delete the dedicated topic if nothing else uses it.",
+        ]
+    else:
+        topic, topic_lines = _ledger_topic_lines(ledger_topics)
+        title = f"route BOUNCE/COMPLAINT events for {config_set_md}"
+        problem = (f"Configuration set `{config_set_md}` has no enabled SNS or Firehose event destination for BOUNCE "
+                   "or COMPLAINT events. A CloudWatch destination only counts them; nothing hears them.")
+        why = ("Complaints sent through this path never reach a feedback handler or the ledger, so ops cannot see "
+               "them and the per-provider rates have no numerator. SES still suppresses the address at account level.")
+        if usage == "idle":
+            why = ("Nothing has used this set in the last 14 days, so this is a latent gap: it becomes real on the "
+                   "first send.")
+        steps = [
+            "Add a BOUNCE/COMPLAINT-only SNS event destination on a ledger-subscribed topic. Do not add delivery "
+            "events here; delivery has its own publishing brief.",
+            "If the sending app needs the events too, subscribe its handler to the same topic rather than creating "
+            "a second path.",
+        ]
+        verify = [
+            f"`aws sesv2 get-configuration-set-event-destinations --configuration-set-name {q(config_set)}` lists "
+            "BOUNCE and COMPLAINT on a ledger-subscribed topic.",
+            "The destination does not publish delivery events.",
+            "On the next dashboard refresh the coverage grid shows this set as routed.",
+        ]
+        rollback = [f"`aws sesv2 delete-configuration-set-event-destination --configuration-set-name {q(config_set)} "
+                    "--event-destination-name feedback-to-ledger`"]
+
+    dest = json.dumps({"Enabled": True, "MatchingEventTypes": ["BOUNCE", "COMPLAINT"],
+                       "SnsDestination": {"TopicArn": topic}}, separators=(",", ":"))
     return brief(
-        f"route BOUNCE/COMPLAINT events for {config_set_md}",
-        problem=f"Configuration set `{config_set_md}` has no enabled SNS or Firehose event destination for BOUNCE or "
-                "COMPLAINT events. A CloudWatch destination only counts them; nothing hears them.",
+        title,
+        problem=problem,
         resource=f"SES configuration set {config_set_md}", region=region,
         why=why,
-        steps=[("Add an SNS event destination on the ledger's feedback topic matching BOUNCE, COMPLAINT and DELIVERY "
-                "(DELIVERY gives the ledger its denominator)."),
-               ("If the sending app needs the events too, subscribe its handler to the same topic rather than "
-                "creating a second path.")],
+        steps=steps,
         commands=[*topic_lines,
                   "aws sesv2 create-configuration-set-event-destination" + _region_flag(region) + " \\",
                   f"  --configuration-set-name {q(config_set)} \\",
                   "  --event-destination-name feedback-to-ledger \\",
                   f"  --event-destination {q(dest)}"],
-        verify=[f"`aws sesv2 get-configuration-set-event-destinations --configuration-set-name {q(config_set)}` "
-                "lists BOUNCE, COMPLAINT and DELIVERY on an SNS destination.",
-                "On the next dashboard refresh the coverage grid shows this set as routed."],
-        rollback=[f"`aws sesv2 delete-configuration-set-event-destination --configuration-set-name {q(config_set)} "
-                  "--event-destination-name feedback-to-ledger`"],
+        verify=verify,
+        rollback=rollback,
     )
 
 
