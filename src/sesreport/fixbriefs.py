@@ -87,8 +87,8 @@ def routing_brief(config_set: str, region: str = "", ledger_topics: list[str] | 
                "delivery has its own publishing brief.")
         steps = [
             "Optional: create a dedicated SNS topic for this path and subscribe the ledger ingest Lambda. Do not "
-            "reuse an ops or alert topic, because an email subscriber would receive raw bounce and complaint "
-            "payloads including recipient addresses.",
+            + "reuse an ops or alert topic, because an email subscriber would receive raw bounce and complaint "
+            + "payloads including recipient addresses.",
             "Add a BOUNCE/COMPLAINT-only event destination on the set, pointing at the dedicated topic. Do not "
             "include delivery events; delivery has its own publishing brief.",
             "If the sending app needs the events too, subscribe its handler to the same dedicated topic rather than "
