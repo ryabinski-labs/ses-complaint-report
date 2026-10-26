@@ -92,7 +92,7 @@ def routing_brief(config_set: str, region: str = "", ledger_topics: list[str] | 
             "Add a BOUNCE/COMPLAINT-only event destination on the set, pointing at the dedicated topic. Do not "
             "include delivery events; delivery has its own publishing brief.",
             "If the sending app needs the events too, subscribe its handler to the same dedicated topic rather than "
-            "creating a second path.",
+            + "creating a second path.",
             f"No action is needed while only {', '.join(_n(c) for c in covered_by)} sends through this set.",
         ]
         verify = [
