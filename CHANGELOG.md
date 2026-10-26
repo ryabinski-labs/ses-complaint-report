@@ -14,6 +14,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- `./start.sh stop` now stops every server started from the checkout, not just
+  the PID in `.server.pid`, and `./start.sh` clears a leftover instance before
+  starting. An old demo-mode server on another port can no longer keep serving
+  synthetic data after a stop/start.
 - README no longer claims DNS results are cached for 7 days: DMARC, SPF and
   DKIM TXT records are re-queried on every refresh; only MX provider
   classification is cached.
