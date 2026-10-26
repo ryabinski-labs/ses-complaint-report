@@ -119,7 +119,7 @@ def routing_brief(config_set: str, region: str = "", ledger_topics: list[str] | 
         steps = [
             "Add a BOUNCE/COMPLAINT-only SNS event destination on a ledger-subscribed topic. Do not add delivery "
             "events here; delivery has its own publishing brief.",
-            "If the sending app needs the events too, subscribe its handler to the same topic rather than creating "
+            "If the sending app needs the events too, subscribe its handler to the same topic rather than creating " +
             "a second path.",
         ]
         verify = [
