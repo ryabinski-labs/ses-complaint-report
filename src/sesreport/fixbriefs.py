@@ -117,7 +117,7 @@ def routing_brief(config_set: str, region: str = "", ledger_topics: list[str] | 
             why = ("Nothing has used this set in the last 14 days, so this is a latent gap: it becomes real on the "
                    "first send.")
         steps = [
-            "Add a BOUNCE/COMPLAINT-only SNS event destination on a ledger-subscribed topic. Do not add delivery "
+            "Add a BOUNCE/COMPLAINT-only SNS event destination on a ledger-subscribed topic. Do not add delivery " +
             "events here; delivery has its own publishing brief.",
             "If the sending app needs the events too, subscribe its handler to the same topic rather than creating "
             "a second path.",
