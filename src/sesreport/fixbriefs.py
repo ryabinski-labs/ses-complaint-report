@@ -623,7 +623,7 @@ _GENERIC_STEPS = [
     "Act on what it is: a marketing or notice path can be stopped and needs opt-in and a visible " +
     "unsubscribe link; a sign-in path has no list to stop, so tighten its request limits and add "
     "nothing to the email.",
-    "Bounced and complaining addresses are suppressed at account level by SES; confirm them on the "
+    "Bounced and complaining addresses are suppressed at account level by SES; confirm them on the " +
     "suppression list rather than adding them again.",
 ]
 
