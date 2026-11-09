@@ -1318,11 +1318,27 @@ function rateCell(v, line) {
   const note = lvl === 'bad' ? ' over the review line' : lvl === 'warn' ? ' over the alert line' : '';
   return `<span class="${lvl}"${note ? ` title="${note.trim()}"` : ''}>${lvl ? '▲ ' : ''}${(v*100).toFixed(line ? 3 : 1)}%${note ? `<span class="sr">${note}</span>` : ''}</span>`;
 }
+// The sender's transactional_kind tag on this row's complaints: a plan notice
+// and a sign-in link need opposite fixes, and the rate alone cannot tell them
+// apart. Shown only when the ledger rows carried the tag.
+function kindHint(r) {
+  const k = r.kinds;
+  if (!k) return '';
+  const total = Object.values(k).reduce((a, b) => a + b, 0);
+  if (!total) return '';
+  const top = Object.entries(k).sort((a, b) => b[1] - a[1])[0];
+  const share = top[1] / total;
+  const label = share < 0.6 ? 'mixed'
+    : ({magic_link: 'sign-in', system_notification: 'notice'})[top[0]];
+  if (!label) return '';
+  const why = `SES transactional_kind on ${fmtInt(total)} complaint${total === 1 ? '' : 's'}`;
+  return ` <span class="muted" title="${why}">· ${esc(label)}</span>`;
+}
 function breakdownColumns(nameTitle) {
   const cl = {alert:0.0008, review:0.001}, bl = {alert:0.05, review:0.10};
   const rateOr = (r, key, line) => r.rate_note ? `<span class="muted">${esc(r.rate_note)}</span>` : rateCell(r[key], line);
   return [
-    {key:'name', title:nameTitle, cls:'mono'},
+    {key:'name', title:nameTitle, cls:'mono', render:r=>esc(r.name)+kindHint(r)},
     {key:'deliveries', title:'Deliveries', type:'num', cls:'num', render:r=>fmtInt(r.deliveries)},
     {key:'complaints', title:'Complaints', type:'num', cls:'num', render:r=>fmtInt(r.complaints)},
     {key:'complaint_rate', title:'Complaint rate', type:'num', cls:'num', render:r=>rateOr(r,'complaint_rate',cl), sortValue:r=>r.complaint_rate ?? -1},

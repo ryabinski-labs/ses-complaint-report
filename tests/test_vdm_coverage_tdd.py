@@ -358,6 +358,25 @@ def test_sc_009_c_floor_suppresses_threshold_findings() -> None:
     assert advisor.threshold_findings(crafted) == []
 
 
+def test_sc_009_d_two_events_at_the_floor_are_watch_not_high() -> None:
+    """SC-009-d: 2 complaints in 1,491 sends is 0.134% — medium, not high; the third event is what proves it."""
+    assert _sev(_row("p.example", 1491, complaints=2), "complaint_rate") == "medium"
+    assert _sev(_row("p.example", 1491, complaints=3), "complaint_rate") == "high"
+    finding = advisor.threshold_findings(_row("p.example", 1491, complaints=2))[0]
+    assert finding["severity"] == "medium"
+    assert "Fewer than 3 events" in finding["detail"]
+    assert "2 complaint events over 1,491 sends" in finding["detail"]
+
+
+def test_sc_010_e_the_watch_brief_reads_the_event_count_not_the_percentage() -> None:
+    """SC-010-e: a two-event finding says how many sends the rate needs, instead of a 7-day promise."""
+    md = fixbriefs.threshold_brief("Config set", "emcognito-transactional", "complaint", 0.00136, 1491, 0.0008,
+                                   events=2, thin=True)
+    assert "too few to call a trend" in md
+    assert "2,501 sends" in md  # 2 / 0.0008 = 2,500, so 2,501 clears the line
+    assert "Within 7 days" not in md
+
+
 # --------------------------------------------------------------------- REQ-010 briefs
 def _headings(md):
     return [line[3:] for line in md.splitlines() if line.startswith("## ")]
@@ -565,3 +584,59 @@ def test_sc_016_b_warm_refresh_re_reads_only_the_last_2_days(tmp_path) -> None:
 
     collect.read_ledger_aggregates(T(), path, today)
     assert len(set(queried)) <= 2
+
+
+# --------------------------------------------------------------------- REQ-017 stream attribution
+def _kinded(day, domain, event, k, kind, identity="example.com", cs="transactional"):
+    return [{**r, "transactional_kind": kind} for r in _rows(day, domain, event, k, identity, cs)]
+
+
+def _complaint(tags: dict) -> dict:
+    return {
+        "notificationType": "Complaint",
+        "complaint": {"complaintFeedbackType": "abuse", "timestamp": "2026-10-24T11:00:00.000Z",
+                      "complainedRecipients": [{"emailAddress": "a@example.com"}]},
+        "mail": {"timestamp": "2026-10-24T10:00:00.000Z", "messageId": "0100M",
+                 "source": "no-reply@emcognito.com", "tags": tags},
+    }
+
+
+def test_sc_017_a_ingest_records_the_senders_stream_tag() -> None:
+    """SC-017-a: a tagged complaint stores transactional_kind; an untagged one stores nothing."""
+    ev = _complaint({"ses:configuration-set": ["emcognito-transactional"],
+                     "transactional_kind": ["system_notification"]})
+    assert ledger.records_for_event(ev, "t", "m", NOW)[0]["transactional_kind"] == "system_notification"
+    untagged = _complaint({"ses:configuration-set": ["emcognito-transactional"]})
+    assert "transactional_kind" not in ledger.records_for_event(untagged, "t", "m", NOW)[0]
+
+
+def test_sc_017_b_breakdowns_expose_kinds_only_where_events_carried_them() -> None:
+    """SC-017-b: kinds are counted per row and absent, not empty, for untagged rows."""
+    rows = _kinded(DAY, "msn.com", "COMPLAINT", 1, "system_notification")
+    b = breakdowns.build_breakdowns([_c(DAY, "msn.com", 1500), _c(DAY, "comcast.net", 1500)],
+                                    rows + _rows(DAY, "comcast.net", "COMPLAINT", 1))
+    tagged, untagged = _by(b["providers"])["msn.com"], _by(b["providers"])["comcast.net"]
+    assert tagged["kinds"] == {"system_notification": 1}
+    assert "kinds" not in untagged
+
+
+def test_sc_017_c_the_brief_names_the_stream_and_drops_the_list_advice() -> None:
+    """SC-017-c: a tagged notice is a plan notice; a tagged sign-in link has no list; untagged stays generic."""
+    notice = fixbriefs.threshold_brief("Config set", "emcognito-transactional", "complaint", 0.00136, 1491, 0.001,
+                                       events=2, kinds={"system_notification": 2})
+    assert "`system_notification`" in notice and "a plan or service notice" in notice
+    assert "lifecycle configuration set" in notice
+    assert "Add or tighten double opt-in" not in notice and "list source" not in notice
+
+    signin = fixbriefs.threshold_brief("Sending identity", "wm.example", "complaint", 0.00155, 1303, 0.001,
+                                       events=2, kinds={"magic_link": 2})
+    assert "`magic_link`" in signin and "There is no list" in signin
+    assert "double opt-in makes no sense for a login" in signin  # named only to say not to
+    assert "Add or tighten double opt-in" not in signin
+
+    split = fixbriefs.threshold_brief("Config set", "c", "complaint", 0.0012, 2000, 0.001,
+                                      events=2, kinds={"magic_link": 1, "system_notification": 1})
+    assert "split across" in split
+
+    generic = fixbriefs.threshold_brief("Config set", "c", "complaint", 0.0012, 2000, 0.001)
+    assert "`transactional_kind`" in generic and "sign-in path has no list" in generic

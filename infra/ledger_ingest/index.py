@@ -129,6 +129,23 @@ def _config_set(event: dict) -> str:
     return str(cs)
 
 
+def _transactional_kind(event: dict) -> str:
+    """The sender's own stream tag (``magic_link`` / ``system_notification``).
+
+    A transactional configuration set carries both sign-in mail and plan
+    notices, and the two need opposite fixes: there is no list to leave behind
+    a magic link, while a notice is exactly the kind of mail a reader can ask
+    to stop. Storing the tag is what lets the dashboard tell them apart without
+    guessing from the template or the recipient domain. Empty when the sender
+    did not tag the message.
+    """
+    tags = (event.get("mail") or {}).get("tags") or {}
+    value = tags.get("transactional_kind") or []
+    if isinstance(value, list):
+        return value[0] if len(value) == 1 else ""
+    return str(value)
+
+
 def records_for_event(event: dict, source: str, sns_message_id: str, now: dt.datetime) -> list[dict]:
     """Normalise one SES event into one ledger row per recipient.
 
@@ -188,6 +205,7 @@ def records_for_event(event: dict, source: str, sns_message_id: str, now: dt.dat
             "recipient_domain": email.rsplit("@", 1)[-1].lower() if "@" in email else "",
             "sending_identity": sending_identity,
             "config_set": config_set,
+            "transactional_kind": _transactional_kind(event),
             "source_key": source_key,
             "feedback_type": feedback_type,
             "source": source,

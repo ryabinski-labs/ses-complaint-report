@@ -285,7 +285,7 @@ requirements:
         doubles: none
         status: "green"
   - id: REQ-009
-    text: Threshold findings flag rows with at least 1,000 deliveries at complaint 0.08% medium, 0.10% high and bounce 5% medium, 10% high.
+    text: Threshold findings flag rows with at least 1,000 deliveries at complaint 0.08% medium, 0.10% high and bounce 5% medium, 10% high; a high finding also needs at least 3 events, because at the sample floor a single event can cross the line.
     priority: P0
     type: functional
     prd_ref: "§5 story 5; A-005"
@@ -320,6 +320,16 @@ requirements:
         oracle: 'threshold_findings([row]) == []'
         doubles: none
         negative: true
+        status: "green"
+      - id: SC-009-d
+        test_ref: "tests/test_vdm_coverage_tdd.py::test_sc_009_d_two_events_at_the_floor_are_watch_not_high"
+        level: unit
+        title: Two events at the floor are watch, not high
+        given: rows of 1,491 sends with 2 and 3 complaints
+        when: threshold_findings runs
+        then: the two-event row is medium with a thin-sample note, and the three-event row is high
+        oracle: '[sev(r) for r in rows] == ["medium","high"]'
+        doubles: none
         status: "green"
   - id: REQ-010
     text: Every Fix button copies a Markdown brief with Problem, Affected resource, Why it matters, Steps, Commands, Verify and Rollback, with shell-quoted commands; routing fixes embed the create-configuration-set-event-destination command.
@@ -366,6 +376,16 @@ requirements:
         then: the clipboard starts with a Markdown heading, contains "## Commands" and the resource name, and the toast names the resource
         oracle: 'clip.startsWith("# ") AND clip.includes("## Commands") AND clip.includes(resource) AND toast.includes(resource)'
         doubles: none — real app in demo mode
+        status: "green"
+      - id: SC-010-e
+        test_ref: "tests/test_vdm_coverage_tdd.py::test_sc_010_e_the_watch_brief_reads_the_event_count_not_the_percentage"
+        level: unit
+        title: A watch brief reads the event count, not the percentage
+        given: a two-event finding held at medium
+        when: threshold_brief renders it
+        then: it says the events are too few to call a trend and names the send count that would clear the line, with no fixed 7-day promise
+        oracle: '"too few to call a trend" in md AND "2,501 sends" in md AND "Within 7 days" not in md'
+        doubles: none
         status: "green"
   - id: REQ-011
     text: Open rate and click rate per provider are messages opened or clicked at least once divided by deliveries, labelled as inflated by Apple Mail Privacy Protection.
@@ -535,4 +555,40 @@ requirements:
         then: Query is called for at most 2 AGG# partitions
         oracle: 'len({q["pk"] for q in fake.queries}) <= 2'
         doubles: counting DynamoDB fake; tmp_path data dir
+        status: "green"
+  - id: REQ-017
+    text: A complaint's transactional_kind tag is stored in the ledger and named in the fix brief, so a plan notice is not treated as sign-in mail.
+    priority: P1
+    type: functional
+    prd_ref: "§5 story 5; DL-003"
+    scenarios:
+      - id: SC-017-a
+        test_ref: "tests/test_vdm_coverage_tdd.py::test_sc_017_a_ingest_records_the_senders_stream_tag"
+        level: unit
+        title: Ingest records the sender's stream tag
+        given: a complaint tagged transaction_kind system_notification and an untagged complaint
+        when: records_for_event runs
+        then: the tagged row carries transactional_kind and the untagged row has no such attribute
+        oracle: 'rows[0]["transactional_kind"] == "system_notification" AND "transactional_kind" not in untagged'
+        doubles: none — pure function
+        status: "green"
+      - id: SC-017-b
+        test_ref: "tests/test_vdm_coverage_tdd.py::test_sc_017_b_breakdowns_expose_kinds_only_where_events_carried_them"
+        level: unit
+        title: Breakdowns expose kinds only where events carried them
+        given: one tagged complaint row and one untagged complaint row in different provider groups
+        when: build_breakdowns runs
+        then: the tagged row has a kinds count and the untagged row has no kinds key
+        oracle: 'tagged["kinds"] == {"system_notification": 1} AND "kinds" not in untagged'
+        doubles: none
+        status: "green"
+      - id: SC-017-c
+        test_ref: "tests/test_vdm_coverage_tdd.py::test_sc_017_c_the_brief_names_the_stream_and_drops_the_list_advice"
+        level: unit
+        title: The brief names the stream and drops the list advice
+        given: complaint rows tagged system_notification, magic_link, split, and untagged
+        when: threshold_brief renders each
+        then: a notice brief says plan or service notice and points at the lifecycle set, a sign-in brief says there is no list, a split brief says sort by stream, and an untagged brief names the tag
+        oracle: '"a plan or service notice" in notice AND "There is no list" in signin AND "split across" in split AND "`transactional_kind`" in generic'
+        doubles: none
         status: "green"

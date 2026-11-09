@@ -11,6 +11,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Each Advisor finding carries a `checked_at` timestamp, shown in Needs
   attention as "checked …", so a cached snapshot cannot look like a live check.
 - OpenSSF Best Practices badge (passing) in the README.
+- Breakdown rows carry the sender's `transactional_kind` counts when the
+  ledger rows were tagged, and the table shows `· sign-in` or `· notice` after
+  the name. The ledger ingest stores the tag from the SES event (the deployed
+  Lambda needs a redeploy before new complaints carry it).
+
+### Changed
+
+- A threshold finding built on fewer than three events is reported as
+  `medium` (watch) with the event count in the detail, instead of `high`. At
+  the 1,000-send floor a single event can cross the line, so the old severity
+  flipped with the window and no real change.
+- Threshold briefs name the stream from `transactional_kind` instead of
+  assuming a marketing list behind every row, and their verify step gives the
+  send count the window needs to clear the line rather than a fixed 7-day
+  promise the trailing window cannot keep.
 
 ### Fixed
 
