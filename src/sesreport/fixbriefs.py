@@ -588,7 +588,7 @@ _SIGNIN_STEPS = [
     "Open Records for this row: `transactional_kind=magic_link` means the reported mail was a sign-in " +
     "link. There is no list and no campaign; double opt-in makes no sense for a login, and the only " +
     "opt-out is the no-account variant's, below.",
-    "Check which variant was sent. An address with no account gets the \"Someone requested a sign-in "
+    "Check which variant was sent. An address with no account gets the \"Someone requested a sign-in " +
     "link\" mail, whose opt-out link and `List-Unsubscribe` header already ship; repeats there are a "
     "request-rate problem, so tighten the per-IP and per-address request budgets instead of the copy.",
     "Confirm the complaint handler suppressed marketing only: a tagged transactional complaint must not "
