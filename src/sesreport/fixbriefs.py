@@ -591,7 +591,7 @@ _SIGNIN_STEPS = [
     "Check which variant was sent. An address with no account gets the \"Someone requested a sign-in " +
     "link\" mail, whose opt-out link and `List-Unsubscribe` header already ship; repeats there are a "
     "request-rate problem, so tighten the per-IP and per-address request budgets instead of the copy.",
-    "Confirm the complaint handler suppressed marketing only: a tagged transactional complaint must not "
+    "Confirm the complaint handler suppressed marketing only: a tagged transactional complaint must not " +
     "set `email_bouncing` or suspend the account's aliases.",
     "SES already suppresses the address at account level on complaint; confirm it on the suppression " +
     "list rather than adding it again.",
