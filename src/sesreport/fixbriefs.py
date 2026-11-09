@@ -598,7 +598,7 @@ _SIGNIN_STEPS = [
 ]
 
 _NOTICE_STEPS = [
-    "Open Records for this row: `transactional_kind=system_notification` means a plan, quota or service "
+    "Open Records for this row: `transactional_kind=system_notification` means a plan, quota or service " +
     "notice, not a sign-in link. This is the one product-mail kind that can be stopped without breaking "
     "sign-in.",
     "Find which notice sent these events and whether it is still running (renewal, trial, over-cap, "
