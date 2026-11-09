@@ -611,7 +611,7 @@ _NOTICE_STEPS = [
 _MIXED_STEPS = [
     "Open Records for this row: the events are split across `transactional_kind` values, so sort them " +
     "before acting — a notice can be stopped, a sign-in link cannot.",
-    "Stop or narrow the notice behind the `system_notification` events; for the `magic_link` events, "
+    "Stop or narrow the notice behind the `system_notification` events; for the `magic_link` events, " +
     "tighten request limits and leave the email alone.",
     "Confirm every reported address is on the account suppression list rather than adding it again.",
 ]
