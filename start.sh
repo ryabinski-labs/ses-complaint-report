@@ -12,7 +12,9 @@
 # Config comes from .env (AWS profile/region, port, refresh interval).
 set -euo pipefail
 
-DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# Physical path: process command lines resolve symlinks, so orphan detection
+# must compare against the real path, not the path used to invoke the script.
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 cd "$DIR"
 
 PID_FILE="$DIR/.server.pid"
@@ -29,7 +31,33 @@ PORT="${SESREPORT_PORT:-8787}"
 URL="http://${HOST}:${PORT}/"
 
 is_running() {
-  [[ -f "$PID_FILE" ]] && kill -0 "$(cat "$PID_FILE")" 2>/dev/null
+  [[ -f "$PID_FILE" ]] || return 1
+  local pid
+  pid="$(cat "$PID_FILE")"
+  kill -0 "$pid" 2>/dev/null || return 1
+  # A recycled PID must not make a dead instance look alive.
+  ps -p "$pid" -o command= 2>/dev/null | grep -q sesreport
+}
+
+# Every sesreport server started from this checkout. The PID file alone is not
+# enough: a later start overwrites it, so an older instance (for example a
+# demo-mode one on another port) can keep serving untracked.
+project_pids() {
+  pgrep -f "$DIR/.venv/bin/sesreport" 2>/dev/null || true
+}
+
+stop_project() {
+  local pids
+  pids="$(project_pids)"
+  [[ -z "$pids" ]] && return 1
+  kill $pids 2>/dev/null || true
+  for _ in $(seq 1 20); do
+    sleep 0.25
+    [[ -z "$(project_pids)" ]] && break
+  done
+  pids="$(project_pids)"
+  [[ -n "$pids" ]] && kill -9 $pids 2>/dev/null || true
+  return 0
 }
 
 start_bg() {
@@ -37,6 +65,13 @@ start_bg() {
     echo "Already running (pid $(cat "$PID_FILE")) → $URL"
     exit 0
   fi
+  # A previous instance may still be up even though the PID file is gone or
+  # points at a dead process. Clear it before starting, so a stale server (for
+  # example one serving demo data on another port) cannot answer the browser.
+  if stop_project; then
+    echo "Stopped a leftover instance from this checkout."
+  fi
+  rm -f "$PID_FILE"
   mkdir -p "$LOG_DIR"
   echo "Starting SES Complaint Report…"
   nohup uv run sesreport >>"$LOG_FILE" 2>&1 &
@@ -58,10 +93,11 @@ start_bg() {
 }
 
 stop_bg() {
-  if is_running; then
-    kill "$(cat "$PID_FILE")" && echo "Stopped (pid $(cat "$PID_FILE"))."
+  if stop_project; then
     rm -f "$PID_FILE"
+    echo "Stopped (including any leftover instances from this checkout)."
   else
+    rm -f "$PID_FILE"
     echo "Not running."
   fi
 }
