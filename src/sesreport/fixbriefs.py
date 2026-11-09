@@ -575,23 +575,105 @@ def dmarc_brief(domain: str, finding: str) -> str:
     )
 
 
-def threshold_brief(group: str, name: str, metric: str, rate: float, deliveries: int, line: float) -> str:
+# What a complaint on a transactional configuration set is actually about. The
+# sender tags every message with ``transactional_kind``; a row that carries the
+# tag needs no guessing, and the two values need opposite fixes — a plan notice
+# can be stopped, a magic link cannot. The generic "find the list source and
+# add double opt-in" wording was wrong for both (2026-11-08, the Free-plan
+# notice sent through emcognito-transactional).
+_KIND_LABELS = {"magic_link": "a sign-in (magic-link) email",
+                "system_notification": "a plan or service notice"}
+
+_SIGNIN_STEPS = [
+    "Open Records for this row: `transactional_kind=magic_link` means the reported mail was a sign-in "
+    "link. There is no list and no campaign; double opt-in makes no sense for a login, and the only "
+    "opt-out is the no-account variant's, below.",
+    "Check which variant was sent. An address with no account gets the \"Someone requested a sign-in "
+    "link\" mail, whose opt-out link and `List-Unsubscribe` header already ship; repeats there are a "
+    "request-rate problem, so tighten the per-IP and per-address request budgets instead of the copy.",
+    "Confirm the complaint handler suppressed marketing only: a tagged transactional complaint must not "
+    "set `email_bouncing` or suspend the account's aliases.",
+    "SES already suppresses the address at account level on complaint; confirm it on the suppression "
+    "list rather than adding it again.",
+]
+
+_NOTICE_STEPS = [
+    "Open Records for this row: `transactional_kind=system_notification` means a plan, quota or service "
+    "notice, not a sign-in link. This is the one product-mail kind that can be stopped without breaking "
+    "sign-in.",
+    "Find which notice sent these events and whether it is still running (renewal, trial, over-cap, "
+    "quota warning, plan-end), then stop it or narrow the audience.",
+    "If the notice has to keep going to customers, send it through the lifecycle configuration set, "
+    "which carries its own suppression and unsubscribe handling, instead of the transactional set.",
+    "The address is suppressed at account level by SES on complaint; confirm rather than duplicate.",
+]
+
+_MIXED_STEPS = [
+    "Open Records for this row: the events are split across `transactional_kind` values, so sort them "
+    "before acting — a notice can be stopped, a sign-in link cannot.",
+    "Stop or narrow the notice behind the `system_notification` events; for the `magic_link` events, "
+    "tighten request limits and leave the email alone.",
+    "Confirm every reported address is on the account suppression list rather than adding it again.",
+]
+
+_GENERIC_STEPS = [
+    "Open Records for this row and read the config set, sending identity and message id. If the row "
+    "carries `transactional_kind`, it names the stream: `magic_link` is sign-in mail, "
+    "`system_notification` is a plan or service notice.",
+    "Act on what it is: a marketing or notice path can be stopped and needs opt-in and a visible "
+    "unsubscribe link; a sign-in path has no list to stop, so tighten its request limits and add "
+    "nothing to the email.",
+    "Bounced and complaining addresses are suppressed at account level by SES; confirm them on the "
+    "suppression list rather than adding them again.",
+]
+
+
+def _dominant_kind(kinds: dict | None) -> str | None:
+    """One stream, ``mixed`` when neither holds 60% of the events, or None."""
+    total = sum(kinds.values()) if kinds else 0
+    if not total:
+        return None
+    kind, n = max(kinds.items(), key=lambda kv: kv[1])
+    return kind if n / total >= 0.6 else "mixed"
+
+
+def threshold_brief(group: str, name: str, metric: str, rate: float, deliveries: int, line: float,
+                    *, events: int | None = None, kinds: dict | None = None, thin: bool = False) -> str:
     group_md = _n(group)
     name_md = _n(name)
     metric_md = _n(metric)
+    kind = _dominant_kind(kinds) if metric == "complaint" else None
+    label = _KIND_LABELS.get(kind)
+    problem = (f"{group_md} `{name_md}` has a {metric_md} rate of {rate * 100:.3f}% over "
+               f"{deliveries:,} deliveries, at or above the {line * 100:.2f}% line.")
+    if events is not None:
+        problem += (f" That is {events:,} {metric} event{'' if events == 1 else 's'}"
+                    + (", too few to call a trend — one fewer would have put the row under the line."
+                       if thin else "."))
+    if label:
+        problem += f" The events came from {label} (`{kind}`)."
+    elif kind == "mixed":
+        problem += " The events are split across streams (`transactional_kind`); sort them before acting."
+    steps = {"magic_link": _SIGNIN_STEPS, "system_notification": _NOTICE_STEPS,
+             "mixed": _MIXED_STEPS}.get(kind, _GENERIC_STEPS)
+    if events is None:
+        verify = ["Re-check this row in 7 days: the rate only falls when the events behind it leave the "
+                  "window or the window grows, so read the event count and not the percentage alone."]
+    else:
+        needed = int(events / line) + 1 if line else deliveries
+        verify = [f"No new {metric_md} event on this row in the next 14 days.",
+                  f"Read the count, not the percentage: these {events:,} event{'' if events == 1 else 's'} "
+                  f"keep the rate at or above {line * 100:.2f}% until the window holds {needed:,} sends "
+                  f"(it holds {deliveries:,}) or one event leaves it."]
     return brief(
         f"reduce the {metric_md} rate for {name_md}",
-        problem=f"{group_md} `{name_md}` has a {metric_md} rate of {rate * 100:.3f}% over {deliveries:,} deliveries, "
-                f"at or above the {line * 100:.2f}% line.",
+        problem=problem,
         resource=f"{group_md} {name_md}",
         why="AWS reviews accounts at a 0.10% complaint or 5% bounce rate and can pause sending at 0.5% or 10%; "
             "mailbox providers throttle well before that.",
-        steps=["Pull the recent complaint and bounce rows for this row from the dashboard's Records section (CSV).",
-               "Find the list source or campaign behind them and stop sending to it.",
-               "Add or tighten double opt-in and a visible unsubscribe link for that path.",
-               "Suppress addresses that bounced or complained."],
+        steps=steps,
         commands=["# export the ledger rows for review (read-only):",
                   "curl -s http://127.0.0.1:8787/api/report | jq '.complaint_records'"],
-        verify=[f"Within 7 days the {metric_md} rate for `{name_md}` is under {line * 100:.2f}% on the dashboard."],
+        verify=verify,
         rollback=["No AWS change is made by this brief."],
     )

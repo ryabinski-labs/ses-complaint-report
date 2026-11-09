@@ -43,10 +43,16 @@ def counts_toward_deliverability(row: dict) -> bool:
 
 
 def _row(name: str) -> dict:
-    return {"name": name, "deliveries": 0, "complaints": 0, "bounces": 0, "opens": 0, "clicks": 0}
+    return {"name": name, "deliveries": 0, "complaints": 0, "bounces": 0, "opens": 0, "clicks": 0,
+            "_kinds": {}}
 
 
 def _finish(row: dict, floor: int, have_deliveries: bool) -> dict:
+    kinds = row.pop("_kinds", {})
+    if kinds:
+        # Only rows whose events carried the sender's stream tag get this, so
+        # historical rows and rows from untagged senders keep their old shape.
+        row["kinds"] = dict(sorted(kinds.items()))
     d = row["deliveries"]
     # A bounced message was never delivered, so SES's bounce rate divides by
     # sends, not deliveries; dividing by deliveries can exceed 100%.
@@ -89,12 +95,16 @@ def build_breakdowns(
     eff = max(filter(None, (since, start)), default=None)
     groups = {"providers": {}, "identities": {}, "config_sets": {}}
 
-    def bump(domain: str, identity: str, config_set: str, field: str, n: int) -> None:
+    def bump(domain: str, identity: str, config_set: str, field: str, n: int,
+             kind: str | None = None) -> None:
         if domain == SIMULATOR_DOMAIN:
             return
         for key, name in (("providers", classify(domain)), ("identities", identity or "(unknown)"),
                           ("config_sets", config_set or "(none)")):
-            groups[key].setdefault(name, _row(name))[field] += n
+            row = groups[key].setdefault(name, _row(name))
+            row[field] += n
+            if kind:
+                row["_kinds"][kind] = row["_kinds"].get(kind, 0) + n
 
     have_deliveries = False
     for c in counters:
@@ -113,7 +123,9 @@ def build_breakdowns(
             continue
         field = {"COMPLAINT": "complaints", "BOUNCE": "bounces"}.get((r.get("event_type") or "").upper())
         if field:
-            bump(r.get("recipient_domain") or "", r.get("sending_identity") or "", r.get("config_set") or "", field, 1)
+            kind = (r.get("transactional_kind") or "").strip() if field == "complaints" else ""
+            bump(r.get("recipient_domain") or "", r.get("sending_identity") or "", r.get("config_set") or "", field, 1,
+                 kind=kind or None)
 
     out = {"state": "ok" if have_deliveries else "no_delivery_data", "since": since, "since_effective": eff}
     for key, rows in groups.items():

@@ -29,6 +29,12 @@ from .breakdowns import counts_toward_deliverability
 
 COMPLAINT_LINES = ((0.0010, "high"), (0.0008, "medium"))
 BOUNCE_LINES = ((0.10, "high"), (0.05, "medium"))
+# The 1,000-send floor is a sample floor, not an evidence floor: at 1,300 sends
+# a rate of 0.10% is two events, and one fewer puts the same row at 0.077%.
+# A row that clears the line on one or two events therefore cannot be called
+# high — the next window flips it back without anything having changed. Hold it
+# at medium (watch) until the event count itself is evidence.
+MIN_EVENTS_FOR_HIGH = 3
 BULK_SENDER_PER_DAY = 5000  # Gmail/Yahoo bulk-sender line: DMARC becomes mandatory
 DNS_TIMEOUT_S = 2.0
 MAX_LOOKUPS = 160
@@ -440,11 +446,22 @@ def threshold_findings(window: dict, floor: int = 1000) -> list[dict]:
                 sev = _severity(r.get(rate_key), lines)
                 if not sev:
                     continue
+                events = int(r.get(metric + "s") or 0)
+                thin = sev == "high" and events < MIN_EVENTS_FOR_HIGH
+                if thin:
+                    sev = "medium"
                 line = _line(lines, sev)
+                detail = (f"{events:,} {metric} event{'s' if events != 1 else ''} over {sends:,} sends, "
+                          f"at or above the {line * 100:.2f}% line.")
+                if thin:
+                    detail += (f" Fewer than {MIN_EVENTS_FOR_HIGH} events: held at watch, because one "
+                               "fewer event would put this row under the line.")
                 out.append(_finding(f"{metric}_rate", sev, f"{key}/{r['name']}",
                                     f"{label} {r['name']}: {metric} rate {r[rate_key] * 100:.3f}%",
-                                    f"Over {sends:,} sends, at or above the {line * 100:.2f}% line.",
-                                    fixbriefs.threshold_brief(label, r["name"], metric, r[rate_key], sends, line),
+                                    detail,
+                                    fixbriefs.threshold_brief(label, r["name"], metric, r[rate_key], sends, line,
+                                                              events=events, kinds=r.get("kinds"),
+                                                              thin=thin),
                                     group=key, name=r["name"]))
     return out
 
