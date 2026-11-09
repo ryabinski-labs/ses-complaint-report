@@ -585,8 +585,8 @@ _KIND_LABELS = {"magic_link": "a sign-in (magic-link) email",
                 "system_notification": "a plan or service notice"}
 
 _SIGNIN_STEPS = [
-    "Open Records for this row: `transactional_kind=magic_link` means the reported mail was a sign-in "
-    "link. There is no list and no campaign; double opt-in makes no sense for a login, and the only "
+    "Open Records for this row: `transactional_kind=magic_link` means the reported mail was a sign-in " +
+    "link. There is no list and no campaign; double opt-in makes no sense for a login, and the only " +
     "opt-out is the no-account variant's, below.",
     "Check which variant was sent. An address with no account gets the \"Someone requested a sign-in "
     "link\" mail, whose opt-out link and `List-Unsubscribe` header already ship; repeats there are a "
