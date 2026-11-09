@@ -620,7 +620,7 @@ _GENERIC_STEPS = [
     "Open Records for this row and read the config set, sending identity and message id. If the row " +
     "carries `transactional_kind`, it names the stream: `magic_link` is sign-in mail, "
     "`system_notification` is a plan or service notice.",
-    "Act on what it is: a marketing or notice path can be stopped and needs opt-in and a visible "
+    "Act on what it is: a marketing or notice path can be stopped and needs opt-in and a visible " +
     "unsubscribe link; a sign-in path has no list to stop, so tighten its request limits and add "
     "nothing to the email.",
     "Bounced and complaining addresses are suppressed at account level by SES; confirm them on the "
