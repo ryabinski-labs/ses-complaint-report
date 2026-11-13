@@ -371,9 +371,13 @@ def account_rate_brief(metric: str, rate: float, line: float) -> str:
         why=("This is the number AWS enforces on: it reviews accounts at 0.10% complaints or 5% bounces and can pause "
              "sending at 0.5% or 10%. It only counts providers that send complaint feedback, so Gmail's complaints "
              "are invisible here and the true rate may be higher."),
-        steps=[("Open the Mailbox providers and Records sections to find which path and list source produced the "
+        steps=[("Open the Mailbox providers and Records sections to find which path and source produced the "
                 "recent complaints or bounces."),
-               "Stop sending to that source; add double opt-in and a visible unsubscribe link.",
+               "Check whether the complaints concentrate in one campaign, one message kind, or a never-engaged "
+               "segment before assuming a list problem.",
+               "If a campaign or list is responsible, stop sending to it. For list or campaign mail, add or "
+               "tighten double opt-in and a visible unsubscribe link. For a one-time service notice, check the "
+               "recipient cohort and offer a preference/opt-out where the notice is not legally required.",
                "Watch the rolling rate: it is a trailing average and takes days to fall."],
         commands=["aws cloudwatch get-metric-statistics --namespace AWS/SES --metric-name " + name
                   + " --statistics Average --period 86400 \\",
