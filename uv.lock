@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.10"
 resolution-markers = [
     "python_full_version >= '3.11'",
@@ -40,8 +40,25 @@ wheels = [
 
 [[package]]
 name = "atheris"
+version = "3.0.0"
+source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "python_full_version < '3.11'",
+]
+sdist = { url = "https://files.pythonhosted.org/packages/f8/58/5965955898e16bee17c8379eae12194993bf641c4629016991248b862069/atheris-3.0.0.tar.gz", hash = "sha256:1f0929c7bc3040f3fe4102e557718734190cf2d7718bbb8e3ce6d3eb56ef5bb3", size = 373239, upload-time = "2025-11-24T23:54:02.15Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/da/15/cf109e2e8696a54c8c4bc3ef79a79bec32361eceb64eaa36690a682e83a9/atheris-3.0.0-cp311-cp311-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:8a5c8a781467c187da40fd29139784193e2647058831f837f675d0bb8cbd8746", size = 34805555, upload-time = "2025-11-24T23:53:53.477Z" },
+    { url = "https://files.pythonhosted.org/packages/85/8c/e9960b996e70e5f6a523670431166b2b238de52fef094955515dcf854da1/atheris-3.0.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:510e502c57b6dc615fb174066407af620d4c7f73cf08a782c86e7761bf12c4eb", size = 34907016, upload-time = "2025-11-24T23:53:56.535Z" },
+    { url = "https://files.pythonhosted.org/packages/db/48/df670f75f458cc7c1752a01a394fd59c830b08172dd59cf29d73f31050f9/atheris-3.0.0-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:a402cdca8a650d1371050b1f9552eb4cdc488d2db64950d603c4560318365eac", size = 34858525, upload-time = "2025-11-24T23:53:59.925Z" },
+]
+
+[[package]]
+name = "atheris"
 version = "3.1.0"
 source = { registry = "https://pypi.org/simple" }
+resolution-markers = [
+    "python_full_version >= '3.11'",
+]
 wheels = [
     { url = "https://files.pythonhosted.org/packages/0a/88/fd6ad595dafa9c7ce56dbfcaff0c7244988dac3af86c771166c6516ccf6b/atheris-3.1.0-cp312-cp312-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:ec5e11f21a4c197fe91f7aea2b2de88e623c73a21fc07b105ac6329a1588457b", size = 36875908, upload-time = "2026-06-17T00:04:01.104Z" },
     { url = "https://files.pythonhosted.org/packages/4e/18/e19718c384fd7d801d0da7485407daef9af6194b6d8c8818175bec5efec6/atheris-3.1.0-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.whl", hash = "sha256:f8a9f51ce8369026e8eb7b7174835e8c4c85a1a6db5d9add36c15100779d2a39", size = 36800563, upload-time = "2026-06-17T00:04:04.559Z" },
@@ -297,14 +314,14 @@ wheels = [
 
 [[package]]
 name = "opentelemetry-api"
-version = "1.45.1"
+version = "1.45.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/2e/02/6e0ae9cc61bd3169d401077b507b3ebc344745171e1051ab430be012dcd9/opentelemetry_api-1.45.1.tar.gz", hash = "sha256:aa38ed19bcc084ba42782a73255b3582283eced7ad6dddbd6695189e69adfb75", size = 72804, upload-time = "2026-10-06T17:32:58.133Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/19/14/cf3a6b6448849656e1e5f4e2101f3988dc6789724050096aba1bc5ccf592/opentelemetry_api-1.45.2.tar.gz", hash = "sha256:d7b0008e21e5fd61cbe7a7f34ca3b6905a78ab677d9bc395e299359c75cda6b4", size = 73277, upload-time = "2026-10-29T17:29:37.888Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1e/41/f7dcf80b81ee8e71c1a2b59f14208bc723edbd89ed027a73b175abf6348e/opentelemetry_api-1.45.1-py3-none-any.whl", hash = "sha256:b31553efa588ae44bc306f863c785c5333a9ecc091248c6ee68b4b6c87fdedfb", size = 60256, upload-time = "2026-10-06T17:32:33.506Z" },
+    { url = "https://files.pythonhosted.org/packages/a9/2d/610db864d7513158cebb8f36cc88e67e73bd6c7aa1905ef18d89e1281c81/opentelemetry_api-1.45.2-py3-none-any.whl", hash = "sha256:2cbd737377e710ee740d261c94e93fa0f08e6d037c18f17513cc0a2d94479a34", size = 60335, upload-time = "2026-10-29T17:29:06.955Z" },
 ]
 
 [[package]]
@@ -655,7 +672,8 @@ dev = [
     { name = "ruff" },
 ]
 fuzz = [
-    { name = "atheris", marker = "sys_platform == 'linux'" },
+    { name = "atheris", version = "3.0.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11' and sys_platform == 'linux'" },
+    { name = "atheris", version = "3.1.0", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version >= '3.11' and sys_platform == 'linux'" },
 ]
 
 [package.metadata]
